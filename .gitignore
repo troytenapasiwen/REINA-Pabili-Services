@@ -1,0 +1,47 @@
+node_modules/
+dist/
+build/
+.next/
+.vercel/
+
+.env
+.env.*
+!.env.example
+.neon
+
+.DS_Store
+*.log
+cookies.txt
+
+.agents/
+.vscode/
+probe-*.png
+*.backup
+*.bak
+
+hashPassword.js
+test-gcash-receipt.js
+test-pabili-workflow.js
+test-settings-direct.mjs
+test-settings.js
+test-settings.mjs
+
+attached_assets/*
+!attached_assets/image_1781445990205.png
+
+.replit
+replit.md
+
+# Personal payment QR code
+/client/public/gcash-qr.png
+
+# Local one-off database scripts; review before sharing
+/add_is_approved.sql
+/add_location_name.sql
+/add_restaurant_location.sql
+
+# Local backup files
+*.bak
+*.backup
+*.old
+*~
