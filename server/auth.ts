@@ -37,11 +37,71 @@ async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
+/**
+ * Creates the default admin from environment variables if no admin exists.
+ * Admin credentials must never be hardcoded into the source code.
+ */
+async function ensureDefaultAdmin() {
+  const users = await storage.getAllUsers();
+  const existingAdmin = users.find((user) => user.role === UserRole.ADMIN);
+
+  // Do not create another admin if one already exists.
+  if (existingAdmin) {
+    return;
+  }
+
+  const username = process.env.ADMIN_USERNAME?.trim();
+  const password = process.env.ADMIN_PASSWORD;
+  const email = process.env.ADMIN_EMAIL?.trim();
+  const fullName =
+    process.env.ADMIN_FULL_NAME?.trim() || "System Administrator";
+
+  if (!username || !password || !email) {
+    throw new Error(
+      "ADMIN_USERNAME, ADMIN_PASSWORD, and ADMIN_EMAIL must be set when no admin account exists.",
+    );
+  }
+
+  if (password.length < 12) {
+    throw new Error("ADMIN_PASSWORD must be at least 12 characters long.");
+  }
+
+  const existingUsername = await storage.getUserByUsername(username);
+  if (existingUsername) {
+    throw new Error(
+      "ADMIN_USERNAME already belongs to another account. Choose a different username.",
+    );
+  }
+
+  const existingEmail = await storage.getUserByEmail(email);
+  if (existingEmail) {
+    throw new Error(
+      "ADMIN_EMAIL already belongs to another account. Choose a different email.",
+    );
+  }
+
+  await storage.createUser({
+    username,
+    password: await hashPassword(password),
+    email,
+    fullName,
+    role: UserRole.ADMIN,
+    isActive: true,
+    emailVerified: true,
+    otpEnabled: false,
+  });
+
+  console.log("Default admin account created.");
+}
+
 export async function setupAuth(app: Express) {
   const sessionSecret = process.env.SESSION_SECRET;
+
   if (!sessionSecret) {
     throw new Error("SESSION_SECRET must be set.");
   }
+
+  await ensureDefaultAdmin();
 
   const sessionSettings: session.SessionOptions = {
     secret: sessionSecret,
@@ -50,20 +110,23 @@ export async function setupAuth(app: Express) {
     store: storage.sessionStore,
     cookie: {
       secure: process.env.NODE_ENV === "production",
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    }
+      maxAge: 24 * 60 * 60 * 1000,
+    },
   };
 
   app.set("trust proxy", 1);
   app.use(session(sessionSettings));
   app.use(passport.initialize());
   app.use(passport.session());
+
   app.use((req, res, next) => {
     if (!req.session.otpPending || !req.path.startsWith("/api/")) {
       return next();
     }
 
-    if (["/api/login", "/api/verify-otp", "/api/logout"].includes(req.path)) {
+    if (
+      ["/api/login", "/api/verify-otp", "/api/logout"].includes(req.path)
+    ) {
       return next();
     }
 
@@ -77,16 +140,17 @@ export async function setupAuth(app: Express) {
     new LocalStrategy(async (username, password, done) => {
       try {
         const user = await storage.getUserByUsername(username);
+
         if (!user || !(await comparePasswords(password, user.password))) {
-          return done(null, false, { message: "Invalid username or password" });
+          return done(null, false, {
+            message: "Invalid username or password",
+          });
         }
 
         if (!user.isActive) {
           return done(null, false, { message: "Account is disabled" });
         }
 
-        // Pass the user even if unverified - the login endpoint will handle the verification check
-        // This allows the endpoint to return a richer response with email info for resend functionality
         return done(null, user);
       } catch (error) {
         return done(error);
@@ -95,6 +159,7 @@ export async function setupAuth(app: Express) {
   );
 
   passport.serializeUser((user, done) => done(null, user.id));
+
   passport.deserializeUser(async (id: number, done) => {
     try {
       const user = await storage.getUser(id);
@@ -109,54 +174,103 @@ export async function setupAuth(app: Express) {
     try {
       const { username, password, email, role, fullName } = req.body;
 
-      // Check if username or email already exists
-      const existingUsername = await storage.getUserByUsername(username);
+      if (
+        typeof username !== "string" ||
+        !username.trim() ||
+        typeof password !== "string" ||
+        password.length === 0 ||
+        typeof email !== "string" ||
+        !email.trim()
+      ) {
+        return res.status(400).json({
+          message: "Username, password, and email are required.",
+        });
+      }
+
+      const requestedRole = role || UserRole.CUSTOMER;
+      const isAdminCreatingAccount =
+        req.isAuthenticated() && req.user.role === UserRole.ADMIN;
+
+      // Admin accounts can only be provisioned through environment settings.
+      if (requestedRole === UserRole.ADMIN) {
+        return res.status(403).json({
+          message: "Admin accounts cannot be created through registration.",
+        });
+      }
+
+      const allowedRoles = [
+        UserRole.CUSTOMER,
+        UserRole.RESTAURANT,
+        UserRole.RIDER,
+      ];
+
+      if (!allowedRoles.includes(requestedRole)) {
+        return res.status(400).json({ message: "Invalid account role." });
+      }
+
+      // Check if username already exists.
+      const existingUsername = await storage.getUserByUsername(
+        username.trim(),
+      );
+
       if (existingUsername) {
         return res.status(400).json({ message: "Username already exists" });
       }
 
-      // Check if email is already registered with ANY role
-      const existingEmail = await storage.getUserByEmail(email);
+      // Check if email is already registered with any role.
+      const normalizedEmail = email.trim();
+      const existingEmail = await storage.getUserByEmail(normalizedEmail);
+
       if (existingEmail) {
-        // Provide detailed error message about email being already in use
-        const roleText = existingEmail.role ? `already registered as ${existingEmail.role}` : "already registered";
+        const roleText = existingEmail.role
+          ? `already registered as ${existingEmail.role}`
+          : "already registered";
+
         return res.status(400).json({
-          message: `This email address is ${roleText}. Please use a different email or login with your existing account.`
+          message: `This email address is ${roleText}. Please use a different email or log in with your existing account.`,
         });
       }
 
-      // Hash password
       const hashedPassword = await hashPassword(password);
+      const verificationToken = randomBytes(32).toString("hex");
+      const verificationExpires = new Date(
+        Date.now() + 24 * 60 * 60 * 1000,
+      );
 
-      // Generate email verification token
-      const verificationToken = randomBytes(32).toString('hex');
-      const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      const isCustomer = requestedRole === UserRole.CUSTOMER;
 
-      // Create user with email verification fields
       const user = await storage.createUser({
-        username,
+        username: username.trim(),
         password: hashedPassword,
-        email,
-        role: role || UserRole.CUSTOMER,
+        email: normalizedEmail,
+        role: requestedRole,
         fullName,
         isActive: true,
-        emailVerified: false,
-        emailVerificationToken: verificationToken,
-        emailVerificationExpires: verificationExpires,
+        emailVerified: isCustomer,
+        emailVerificationToken: isCustomer ? null : verificationToken,
+        emailVerificationExpires: isCustomer ? null : verificationExpires,
         otpEnabled: false,
       });
 
-      // Send verification email
-      try {
-        const baseUrl = getBaseUrl(req);
-        await sendEmailVerificationEmail(email, fullName || username, verificationToken, baseUrl);
-        console.log(`Verification email sent to ${email} with base URL: ${baseUrl}`);
-      } catch (emailError) {
-        console.error('Failed to send verification email:', emailError);
-        // Continue with registration even if email fails
+      // Customers do not need email verification.
+      // Keep the existing verification email behavior for other roles.
+      if (!isCustomer) {
+        try {
+          const baseUrl = getBaseUrl(req);
+          await sendEmailVerificationEmail(
+            normalizedEmail,
+            fullName || username,
+            verificationToken,
+            baseUrl,
+          );
+          console.log(`Verification email sent to ${normalizedEmail}`);
+        } catch (emailError) {
+          console.error("Failed to send verification email:", emailError);
+          // Preserve the existing behavior if email delivery fails.
+        }
       }
 
-      // Create additional record based on role
+      // Create the related record for the selected role.
       if (user.role === UserRole.CUSTOMER) {
         await storage.createCustomer({
           userId: user.id,
@@ -164,14 +278,13 @@ export async function setupAuth(app: Express) {
           savedAddresses: [],
         });
       } else if (user.role === UserRole.RESTAURANT) {
-        // Create a restaurant record for restaurant users
         await storage.createRestaurant({
           userId: user.id,
           name: fullName || `${username}'s Restaurant`,
           description: "New restaurant on Reina Pabili Services",
           address: "",
           phone: "",
-          email: email,
+          email: normalizedEmail,
           isActive: true,
           deliveryFee: 50,
           categories: ["General"],
@@ -179,45 +292,47 @@ export async function setupAuth(app: Express) {
           closingTime: "21:00",
         });
       } else if (user.role === UserRole.RIDER) {
-        // Set a flag in the session for rider registration
-        // This will be used by the /api/riders endpoint to allow creation
         if (req.session) {
           req.session.justRegisteredRider = true;
         }
       }
 
-      // Only login the user if it's not an admin creating the account
-      // If an admin is creating the account, preserve the admin's session
-      const isAdminCreatingAccount = req.isAuthenticated() && req.user.role === UserRole.ADMIN;
-
+      // Preserve the administrator's session when they create another account.
       if (isAdminCreatingAccount) {
-        // Admin is creating the account, don't login the new user
-        // Just return the created user data
-        const { password, ...userWithoutPassword } = user;
-        res.status(201).json(userWithoutPassword);
-      } else {
-        // Don't automatically login unverified users - they must verify email first
-        // Admin users are an exception and can login immediately
-        if (user.role === UserRole.ADMIN) {
-          // Admin users can login immediately without email verification
-          req.login(user, (err) => {
-            if (err) return next(err);
-
-            // Remove password before sending response
-            const { password, ...userWithoutPassword } = user;
-            res.status(201).json(userWithoutPassword);
-          });
-        } else {
-          // Regular users must verify email before they can login
-          // Remove password before sending response
-          const { password, ...userWithoutPassword } = user;
-          res.status(201).json({
-            ...userWithoutPassword,
-            emailVerificationRequired: true,
-            message: "Registration successful! Please check your email to verify your account before logging in."
-          });
-        }
+        const { password: _password, otpSecret: _otpSecret, ...safeUser } = user;
+        return res.status(201).json(safeUser);
       }
+
+      // Automatically log customers in after registration.
+      if (user.role === UserRole.CUSTOMER) {
+        return req.login(user, (err) => {
+          if (err) {
+            return next(err);
+          }
+
+          const {
+            password: _password,
+            otpSecret: _otpSecret,
+            ...safeUser
+          } = user;
+
+          return res.status(201).json(safeUser);
+        });
+      }
+
+      // Preserve the existing registration response for restaurant and rider accounts.
+      const {
+        password: _password,
+        otpSecret: _otpSecret,
+        ...safeUser
+      } = user;
+
+      return res.status(201).json({
+        ...safeUser,
+        emailVerificationRequired: true,
+        message:
+          "Registration successful! Please check your email to verify your account before logging in.",
+      });
     } catch (error) {
       next(error);
     }
@@ -226,50 +341,66 @@ export async function setupAuth(app: Express) {
   // Login endpoint
   app.post("/api/login", (req, res, next) => {
     passport.authenticate("local", async (err, user, info) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info.message || "Invalid credentials" });
+      if (err) {
+        return next(err);
+      }
 
-      // Check email verification status (skip for admin users)
-      if (user.role !== UserRole.ADMIN && !user.emailVerified) {
+      if (!user) {
+        return res
+          .status(401)
+          .json({ message: info?.message || "Invalid credentials" });
+      }
+
+      // Email verification remains required for restaurant and rider accounts,
+      // but not for admins or customers.
+      if (
+        user.role !== UserRole.ADMIN &&
+        user.role !== UserRole.CUSTOMER &&
+        !user.emailVerified
+      ) {
         return res.status(403).json({
-          message: "Please verify your email address before logging in. Check your email for the verification link.",
+          message:
+            "Please verify your email address before logging in. Check your email for the verification link.",
           emailNotVerified: true,
-          email: user.email
+          email: user.email,
         });
       }
 
-      // Check maintenance mode
+      // Check maintenance mode.
       try {
         const maintenanceSetting = await storage.getSetting("maintenanceMode");
         const isMaintenanceMode = maintenanceSetting?.value === "true";
 
-        // If in maintenance mode and user is not an admin, block login
         if (isMaintenanceMode && user.role !== UserRole.ADMIN) {
           return res.status(503).json({
-            message: "The system is currently under maintenance. Please try again later.",
-            maintenanceMode: true
+            message:
+              "The system is currently under maintenance. Please try again later.",
+            maintenanceMode: true,
           });
         }
       } catch (error) {
         console.error("Error checking maintenance mode:", error);
-        // Continue with login if there's an error checking maintenance mode
       }
 
       req.login(user, async (err) => {
-        if (err) return next(err);
+        if (err) {
+          return next(err);
+        }
 
-        // Update last login time
-        await storage.updateUser(user.id, { lastLogin: new Date() });
+        try {
+          await storage.updateUser(user.id, { lastLogin: new Date() });
+        } catch (error) {
+          console.error("Error updating last login:", error);
+        }
 
-        // If the user is a rider, make sure they have a rider profile and set status to ACTIVE
+        // Preserve the existing rider-profile handling.
         if (user.role === UserRole.RIDER) {
           try {
-            // First check if they already have a rider profile
             let rider = await storage.getRiderByUserId(user.id);
 
             if (!rider) {
-              // Create a new rider profile with ACTIVE status
               console.log("Creating rider profile for rider user on login");
+
               rider = await storage.createRider({
                 userId: user.id,
                 licenseNumber: "PENDING",
@@ -279,36 +410,50 @@ export async function setupAuth(app: Express) {
                 currentLocation: {},
                 isVerified: false,
               });
+
               console.log("Created rider profile on login with ID:", rider.id);
             } else {
-              // Update existing rider to ACTIVE status
-              console.log("Setting existing rider to ACTIVE status, ID:", rider.id);
-              await storage.updateRider(rider.id, { status: RiderStatus.ACTIVE });
+              console.log(
+                "Setting existing rider to ACTIVE status, ID:",
+                rider.id,
+              );
+
+              await storage.updateRider(rider.id, {
+                status: RiderStatus.ACTIVE,
+              });
             }
           } catch (error) {
-            console.error("Error creating/updating rider profile on login:", error);
-            // Continue login process even if rider profile update fails
+            console.error(
+              "Error creating/updating rider profile on login:",
+              error,
+            );
           }
         }
 
-        // Generate OTP if enabled
+        // Generate OTP if enabled.
         if (user.otpEnabled) {
           req.session.otpPending = true;
           const otpSecret = user.otpSecret || generateOTP();
+
           if (!user.otpSecret) {
             await storage.updateUser(user.id, { otpSecret });
           }
+
           return res.status(200).json({
             requiresOtp: true,
-            message: "OTP required"
+            message: "OTP required",
           });
         }
 
         req.session.otpPending = false;
 
-        // Remove password before sending response
-        const { password, otpSecret, ...userWithoutSensitiveInfo } = user;
-        return res.status(200).json(userWithoutSensitiveInfo);
+        const {
+          password: _password,
+          otpSecret: _otpSecret,
+          ...safeUser
+        } = user;
+
+        return res.status(200).json(safeUser);
       });
     })(req, res, next);
   });
@@ -324,26 +469,33 @@ export async function setupAuth(app: Express) {
       const user = await storage.getUser(userId);
 
       if (!user || !user.otpEnabled || !user.otpSecret) {
-        return res.status(400).json({ message: "OTP not enabled for this user" });
+        return res
+          .status(400)
+          .json({ message: "OTP not enabled for this user" });
       }
 
       const { otp } = req.body;
-
       const validationResult = otpSchema.safeParse({ otp });
+
       if (!validationResult.success) {
         return res.status(400).json({ message: "Invalid OTP format" });
       }
 
       const isValid = verifyOTP(user.otpSecret, otp);
+
       if (!isValid) {
         return res.status(401).json({ message: "Invalid OTP" });
       }
 
       delete req.session.otpPending;
 
-      // Remove sensitive info before sending the response
-      const { password, otpSecret, ...userWithoutSensitiveInfo } = user;
-      return res.status(200).json(userWithoutSensitiveInfo);
+      const {
+        password: _password,
+        otpSecret: _otpSecret,
+        ...safeUser
+      } = user;
+
+      return res.status(200).json(safeUser);
     } catch (error) {
       next(error);
     }
@@ -352,7 +504,10 @@ export async function setupAuth(app: Express) {
   // Logout endpoint
   app.post("/api/logout", (req, res, next) => {
     req.logout((err) => {
-      if (err) return next(err);
+      if (err) {
+        return next(err);
+      }
+
       res.sendStatus(200);
     });
   });
@@ -363,12 +518,16 @@ export async function setupAuth(app: Express) {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    // Remove sensitive info before sending the response
-    const { password, otpSecret, ...userWithoutSensitiveInfo } = req.user;
-    res.json(userWithoutSensitiveInfo);
+    const {
+      password: _password,
+      otpSecret: _otpSecret,
+      ...safeUser
+    } = req.user;
+
+    return res.json(safeUser);
   });
 
-  // Enable OTP for a user
+  // Enable OTP for the current user.
   app.post("/api/enable-otp", async (req, res, next) => {
     try {
       if (!req.isAuthenticated()) {
@@ -380,16 +539,18 @@ export async function setupAuth(app: Express) {
 
       await storage.updateUser(userId, {
         otpEnabled: true,
-        otpSecret
+        otpSecret,
       });
 
-      res.status(200).json({ message: "OTP enabled successfully" });
+      return res.status(200).json({
+        message: "OTP enabled successfully",
+      });
     } catch (error) {
       next(error);
     }
   });
 
-  // Disable OTP for a user
+  // Disable OTP for the current user.
   app.post("/api/disable-otp", async (req, res, next) => {
     try {
       if (!req.isAuthenticated()) {
@@ -400,14 +561,14 @@ export async function setupAuth(app: Express) {
 
       await storage.updateUser(userId, {
         otpEnabled: false,
-        otpSecret: null
+        otpSecret: null,
       });
 
-      res.status(200).json({ message: "OTP disabled successfully" });
+      return res.status(200).json({
+        message: "OTP disabled successfully",
+      });
     } catch (error) {
       next(error);
     }
   });
-
-
 }
