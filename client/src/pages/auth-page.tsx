@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { ShoppingBag, LogIn, User, Eye, EyeOff, Check, X, AlertCircle, Utensils, Timer, ShieldCheck, MapPin } from "lucide-react";
+import { ShoppingBag, LogIn, User, Eye, EyeOff, Check, X, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -18,18 +18,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { BrandLogo } from "@/components/brand-logo";
 
-// Presentation only: hero photo. Swap for a local asset (e.g. import heroUrl from "@assets/hero.jpg")
-// if you prefer not to hotlink. If it fails to load, the gradient behind it is shown instead.
+// Presentation only: food photo for the right-hand side (desktop). Replace with a bundled asset
+// (e.g. import heroUrl from "@assets/auth-food.jpg") if you prefer not to hotlink. If it fails to load,
+// the soft brand-tinted background behind it is shown and the form is unaffected.
 const HERO_IMAGE_URL =
-  "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1600&q=80";
-
-// Presentation only: hero feature list (same copy as before, with icons)
-const HERO_FEATURES = [
-  { icon: Utensils, title: "Wide Selection", text: "Choose from hundreds of restaurants across the city" },
-  { icon: Timer, title: "Fast Delivery", text: "Get your food delivered within 30-45 minutes" },
-  { icon: ShieldCheck, title: "Secure Payments", text: "Multiple payment options for your convenience" },
-  { icon: MapPin, title: "Live Tracking", text: "Track your order in real-time from restaurant to door" },
-];
+  "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1400&q=80";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -60,10 +53,19 @@ const registerSchema = z.object({
   }),
 });
 
-// Shared presentation classes
-const inputClass = "h-11 rounded-lg border-stone-200 bg-white focus-visible:ring-primary";
-const primaryButtonClass = "w-full h-11 rounded-lg text-base font-semibold shadow-md shadow-primary/25";
-const cardClass = "border-stone-200/80 shadow-xl shadow-stone-900/5 rounded-2xl bg-white";
+// Shared presentation classes: square, filled fields and a modest primary button, as in the reference
+const inputClass = "h-11 rounded-sm border-gray-300 bg-gray-50";
+const labelClass = "text-sm font-medium text-gray-600";
+const primaryButtonClass = "h-11 w-full rounded-sm text-base font-semibold sm:w-auto sm:min-w-44 sm:px-10";
+const panelClass = "border-0 bg-transparent shadow-none rounded-none";
+const panelHeaderClass = "px-0 pt-0 pb-8 space-y-2";
+const panelContentClass = "px-0 pb-0";
+const titleClass = "text-3xl font-semibold tracking-tight";
+const switchLinkClass = "h-auto p-0 font-semibold text-primary";
+// Tab panels are plain containers, not controls. Radix makes them focusable (tabIndex=0) and the shadcn
+// TabsContent adds a focus-visible ring in --ring (same coral as --primary), which draws an orange box
+// around the whole panel. The ring is removed on the panel only; inputs, buttons and tab triggers keep theirs.
+const tabPanelClass = "mt-0 outline-none ring-0 ring-offset-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0";
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
@@ -77,6 +79,22 @@ export default function AuthPage() {
   const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [checkingMaintenance, setCheckingMaintenance] = useState(true);
   const [showMaintenanceForAdmin, setShowMaintenanceForAdmin] = useState(false);
+
+  // Presentation only: tab selection + scroll anchor (form values live in the react-hook-form instances above/below)
+  const [activeTab, setActiveTab] = useState("login");
+  const previousTab = useRef(activeTab);
+  const tabsAnchorRef = useRef<HTMLDivElement>(null);
+
+  // After the newly selected form has rendered, bring its tab bar/heading into view, but only if
+  // the user has scrolled past it. Runs on tab changes only (not on validation, dialogs or OTP).
+  useEffect(() => {
+    if (previousTab.current === activeTab) return;
+    previousTab.current = activeTab;
+    const anchor = tabsAnchorRef.current;
+    if (!anchor || anchor.getBoundingClientRect().top >= 0) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    anchor.scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" });
+  }, [activeTab]);
 
   // Password strength calculation
   const getPasswordRequirements = (password: string) => {
@@ -94,30 +112,30 @@ export default function AuthPage() {
     const isStrongPassword = Object.values(reqs).every(Boolean);
 
     return (
-      <div className="mt-3 space-y-3 rounded-lg border border-stone-200 bg-stone-50/70 p-3">
-        <div className="text-sm font-medium text-stone-700">Password Requirements:</div>
+      <div className="mt-3 space-y-3">
+        <div className="text-sm font-medium text-gray-700">Password Requirements:</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
-          <div className={`flex items-center text-xs ${reqs.hasLength ? 'text-green-600' : 'text-stone-500'}`}>
+          <div className={`flex items-center text-xs ${reqs.hasLength ? 'text-green-600' : 'text-gray-500'}`}>
             {reqs.hasLength ? <Check className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
             At least 6 characters
           </div>
-          <div className={`flex items-center text-xs ${reqs.hasLetter ? 'text-green-600' : 'text-stone-500'}`}>
+          <div className={`flex items-center text-xs ${reqs.hasLetter ? 'text-green-600' : 'text-gray-500'}`}>
             {reqs.hasLetter ? <Check className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
             Contains letters (a-z)
           </div>
-          <div className={`flex items-center text-xs ${reqs.hasNumber ? 'text-green-600' : 'text-stone-500'}`}>
+          <div className={`flex items-center text-xs ${reqs.hasNumber ? 'text-green-600' : 'text-gray-500'}`}>
             {reqs.hasNumber ? <Check className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
             Contains numbers (0-9)
           </div>
-          <div className={`flex items-center text-xs ${reqs.hasSpecial ? 'text-green-600' : 'text-stone-500'}`}>
+          <div className={`flex items-center text-xs ${reqs.hasSpecial ? 'text-green-600' : 'text-gray-500'}`}>
             {reqs.hasSpecial ? <Check className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
             Contains special characters (!@#$%^&*)
           </div>
         </div>
         {password && (
           <div>
-            <div className="text-xs text-stone-600 mb-1">Password Strength:</div>
-            <div className="w-full bg-stone-200 rounded-full h-2">
+            <div className="text-xs text-gray-600 mb-1">Password Strength:</div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
               <div
                 className={`h-2 rounded-full transition-all duration-300 ${
                   isStrongPassword
@@ -130,7 +148,7 @@ export default function AuthPage() {
                 }`}
               />
             </div>
-            <div className="text-xs mt-1 text-stone-600">
+            <div className="text-xs mt-1 text-gray-600">
               {isStrongPassword
                 ? 'Strong password'
                 : Object.values(reqs).filter(Boolean).length >= 3
@@ -256,8 +274,7 @@ export default function AuthPage() {
           });
           // Switch to login tab after a short delay
           setTimeout(() => {
-            const loginTab = document.querySelector('[data-testid="tab-login"]') as HTMLButtonElement;
-            if (loginTab) loginTab.click();
+            setActiveTab("login");
           }, 2000);
         },
         onError: () => {
@@ -310,14 +327,14 @@ export default function AuthPage() {
 
   if (isLoading || checkingMaintenance) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-stone-50">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-stone-50 flex flex-col lg:flex-row">
+    <div className="min-h-screen w-full bg-white sm:bg-gray-100">
       {/* Maintenance Mode Modal */}
       <Dialog open={isMaintenanceMode && !showMaintenanceForAdmin} onOpenChange={() => {}}>
         <DialogContent className="sm:max-w-md">
@@ -347,8 +364,8 @@ export default function AuthPage() {
 
       {/* Admin Maintenance Notice */}
       {showMaintenanceForAdmin && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50">
-          <Alert className="bg-yellow-50 border-yellow-200 max-w-md">
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-md">
+          <Alert className="bg-yellow-50 border-yellow-200">
             <AlertCircle className="h-4 w-4 text-yellow-600" />
             <AlertTitle>Maintenance Mode Active</AlertTitle>
             <AlertDescription>
@@ -365,76 +382,33 @@ export default function AuthPage() {
         onDecline={handleTermsDecline}
       />
 
-      {/* Hero Section: full-bleed food photo with brand-colored overlay */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-primary via-orange-600 to-stone-900 text-white">
-        <img
-          src={HERO_IMAGE_URL}
-          alt=""
-          aria-hidden="true"
-          className="absolute inset-0 h-full w-full object-cover"
-          onError={(e) => { e.currentTarget.style.display = "none"; }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-stone-950/90 via-stone-900/55 to-primary/40" />
-
-        <div className="relative z-10 flex w-full flex-col justify-between p-12 xl:p-16">
-          <div className="flex items-center">
-            <BrandLogo className="h-14 w-14 ring-2 ring-white/40" />
-            <h1 className="text-2xl font-bold ml-3 tracking-tight">Reina Pabili Services</h1>
-          </div>
-
-          <div className="max-w-lg">
-            <h2 className="text-5xl xl:text-6xl font-extrabold leading-[1.05] tracking-tight mb-5">
-              Fast, Reliable Delivery Services
-            </h2>
-            <p className="text-lg text-white/85 leading-relaxed mb-10 max-w-md">
-              Order from your favorite restaurants and have delicious meals delivered to your doorstep.
-            </p>
-
-            <ul className="grid grid-cols-2 gap-x-8 gap-y-6 border-t border-white/25 pt-8">
-              {HERO_FEATURES.map(({ icon: Icon, title, text }) => (
-                <li key={title} className="flex gap-3">
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-                    <Icon className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <h3 className="font-semibold leading-tight mb-1">{title}</h3>
-                    <p className="text-sm text-white/75 leading-snug">{text}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
+      {/* Split card: white form on the left, food photo on the right (desktop). Height comes from the form. */}
+      <div className="sm:flex sm:min-h-screen sm:items-center sm:justify-center sm:px-6 sm:py-10">
+      <div className="grid w-full max-w-6xl bg-white sm:shadow-xl lg:min-h-[600px] lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <main className="flex min-w-0 flex-col px-6 py-8 sm:px-12 sm:py-12">
+        {/* Brand row */}
+        <div className="flex items-center gap-3">
+          <BrandLogo className="h-10 w-10" />
+          <span className="text-lg font-semibold">Reina Pabili Services</span>
         </div>
-      </div>
 
-      {/* Form Section */}
-      <div className="flex-1 flex flex-col items-center justify-center px-5 py-8 sm:p-10 bg-gradient-to-b from-white to-stone-50">
-        <div className="w-full max-w-md">
-          {/* Brand header for smaller screens */}
-          <div className="lg:hidden mb-8 text-center">
-            <div className="flex items-center justify-center mb-2">
-              <BrandLogo className="h-12 w-12" />
-              <h1 className="text-2xl font-bold ml-2 text-primary tracking-tight">Reina Pabili Services</h1>
-            </div>
-            <p className="text-sm text-muted-foreground">Fast, Reliable Delivery Services</p>
-          </div>
-
+        <div className="my-auto w-full max-w-md py-10">
           {isOtpRequired ? (
-            <Card className={cardClass}>
-              <CardHeader>
-                <CardTitle className="text-2xl tracking-tight">Verify OTP</CardTitle>
+            <Card className={panelClass}>
+              <CardHeader className={panelHeaderClass}>
+                <CardTitle className={titleClass}>Verify OTP</CardTitle>
                 <CardDescription>
                   Please enter the one-time password to verify your account
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className={panelContentClass}>
                 <OTPInput
                   length={6}
                   onComplete={onOtpComplete}
                   disabled={verifyOtpMutation.isPending}
                 />
               </CardContent>
-              <CardFooter className="flex flex-col items-start">
+              <CardFooter className="flex flex-col items-start px-0 pb-0 pt-6">
                 <p className="text-sm text-muted-foreground mb-2">
                   Didn't receive the code?
                   <Button variant="link" className="p-0 h-auto ml-1">
@@ -443,49 +417,39 @@ export default function AuthPage() {
                 </p>
                 <Button
                   variant="outline"
-                  className="mt-2 rounded-lg"
-                  onClick={() => setIsOtpRequired(false)}
+                  className="mt-2"
+                  onClick={() => { setIsOtpRequired(false); setActiveTab("login"); }}
                 >
                   Back to Login
                 </Button>
               </CardFooter>
             </Card>
           ) : (
-            <Tabs defaultValue="login" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6 h-12 rounded-xl bg-stone-200/60 p-1">
-                <TabsTrigger
-                  value="login"
-                  data-testid="tab-login"
-                  className="rounded-lg font-medium data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm"
-                >
-                  Login
-                </TabsTrigger>
-                <TabsTrigger
-                  value="register"
-                  className="rounded-lg font-medium data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-sm"
-                >
-                  Register
-                </TabsTrigger>
+            <div ref={tabsAnchorRef} className="scroll-mt-4">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="hidden">
+                <TabsTrigger value="login" data-testid="tab-login">Login</TabsTrigger>
+                <TabsTrigger value="register" data-testid="tab-register">Register</TabsTrigger>
               </TabsList>
 
               {/* Login Form */}
-              <TabsContent value="login">
-                <Card className={cardClass}>
-                  <CardHeader className="space-y-1.5">
-                    <CardTitle className="text-2xl tracking-tight">Login to Reina Pabili Services</CardTitle>
+              <TabsContent value="login" tabIndex={-1} className={tabPanelClass}>
+                <Card className={panelClass}>
+                  <CardHeader className={panelHeaderClass}>
+                    <CardTitle className={titleClass}>Welcome back</CardTitle>
                     <CardDescription>
-                      Enter your credentials to access your account
+                      Sign in with your username and password.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className={panelContentClass}>
                     <Form {...loginForm}>
-                      <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-5">
+                      <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
                         <FormField
                           control={loginForm.control}
                           name="username"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Username</FormLabel>
+                              <FormLabel className={labelClass}>Username</FormLabel>
                               <FormControl>
                                 <Input className={inputClass} placeholder="Enter your username" {...field} />
                               </FormControl>
@@ -498,11 +462,11 @@ export default function AuthPage() {
                           name="password"
                           render={({ field }) => (
                             <FormItem>
-                              <div className="flex justify-between items-center">
-                                <FormLabel>Password</FormLabel>
+                              <div className="flex justify-between items-center gap-2">
+                                <FormLabel className={labelClass}>Password</FormLabel>
                                 <Button
                                   variant="link"
-                                  className="p-0 h-auto text-xs"
+                                  className="p-0 h-auto text-sm text-gray-500 hover:text-primary"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     window.location.href = '/forgot-password';
@@ -514,7 +478,7 @@ export default function AuthPage() {
                               <FormControl>
                                 <div className="relative">
                                   <Input
-                                    className={inputClass}
+                                    className={`${inputClass} pr-11`}
                                     type={showLoginPassword ? "text" : "password"}
                                     placeholder="Enter your password"
                                     {...field}
@@ -562,26 +526,32 @@ export default function AuthPage() {
                     </Form>
                   </CardContent>
                 </Card>
+                <p className="mt-8 text-sm text-gray-600">
+                  Don't have an account?{" "}
+                  <Button type="button" variant="link" className={switchLinkClass} onClick={() => setActiveTab("register")}>
+                    Sign up
+                  </Button>
+                </p>
               </TabsContent>
 
               {/* Register Form */}
-              <TabsContent value="register" id="register-tab">
-                <Card className={cardClass}>
-                  <CardHeader className="space-y-1.5">
-                    <CardTitle className="text-2xl tracking-tight">Create an Account</CardTitle>
+              <TabsContent value="register" id="register-tab" tabIndex={-1} className={tabPanelClass}>
+                <Card className={panelClass}>
+                  <CardHeader className={panelHeaderClass}>
+                    <CardTitle className={titleClass}>Create an Account</CardTitle>
                     <CardDescription>
                       Fill in your details to register with Reina Pabili Services
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className={panelContentClass}>
                     <Form {...registerForm}>
-                      <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-5">
+                      <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-4">
                         <FormField
                           control={registerForm.control}
                           name="fullName"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Full Name</FormLabel>
+                              <FormLabel className={labelClass}>Full Name</FormLabel>
                               <FormControl>
                                 <Input className={inputClass} placeholder="Enter your full name" {...field} />
                               </FormControl>
@@ -594,7 +564,7 @@ export default function AuthPage() {
                           name="email"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Email</FormLabel>
+                              <FormLabel className={labelClass}>Email</FormLabel>
                               <FormControl>
                                 <Input className={inputClass} type="email" placeholder="Enter your email" {...field} />
                               </FormControl>
@@ -607,7 +577,7 @@ export default function AuthPage() {
                           name="username"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Username</FormLabel>
+                              <FormLabel className={labelClass}>Username</FormLabel>
                               <FormControl>
                                 <Input className={inputClass} placeholder="Choose a username" {...field} />
                               </FormControl>
@@ -620,11 +590,11 @@ export default function AuthPage() {
                           name="password"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Password</FormLabel>
+                              <FormLabel className={labelClass}>Password</FormLabel>
                               <FormControl>
                                 <div className="relative">
                                   <Input
-                                    className={inputClass}
+                                    className={`${inputClass} pr-11`}
                                     type={showRegisterPassword ? "text" : "password"}
                                     placeholder="Choose a password"
                                     {...field}
@@ -657,12 +627,12 @@ export default function AuthPage() {
                           name="role"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Account Type</FormLabel>
-                              <div className="flex gap-3">
+                              <FormLabel className={labelClass}>Account Type</FormLabel>
+                              <div className="grid grid-cols-2 gap-3">
                                 <Button
                                   type="button"
                                   variant={field.value === UserRole.CUSTOMER ? "default" : "outline"}
-                                  className="flex-1 h-11 rounded-lg"
+                                  className="h-11 rounded-sm"
                                   onClick={() => registerForm.setValue("role", UserRole.CUSTOMER)}
                                 >
                                   Customer
@@ -670,7 +640,7 @@ export default function AuthPage() {
                                 <Button
                                   type="button"
                                   variant={field.value === UserRole.RESTAURANT ? "default" : "outline"}
-                                  className="flex-1 h-11 rounded-lg"
+                                  className="h-11 rounded-sm"
                                   onClick={() => registerForm.setValue("role", UserRole.RESTAURANT)}
                                 >
                                   Restaurant
@@ -697,14 +667,38 @@ export default function AuthPage() {
                             </>
                           )}
                         </Button>
+                        <p className="text-center text-xs text-muted-foreground">
+                          You'll be asked to review and accept the Terms and Conditions before your account is created.
+                        </p>
                       </form>
                     </Form>
                   </CardContent>
                 </Card>
+                <p className="mt-8 text-sm text-gray-600">
+                  Already have an account?{" "}
+                  <Button type="button" variant="link" className={switchLinkClass} onClick={() => setActiveTab("login")}>
+                    Log in
+                  </Button>
+                </p>
               </TabsContent>
             </Tabs>
+            </div>
           )}
         </div>
+      </main>
+
+      {/* Food photo: desktop only, absolutely positioned so it never affects the form's height */}
+      <div className="relative hidden lg:block bg-primary/10" aria-hidden="true">
+        <img
+          src={HERO_IMAGE_URL}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
+        />
+      </div>
+      </div>
       </div>
     </div>
   );
