@@ -245,47 +245,6 @@ export function RiderNavigation({ source, destination, currentLocation, orderSta
     }
   }, [googleMapsApiKey, currentLocation, source, destination, autoCalculated, isCalculating, calculateRouteForDirections]);
 
-  // Direction calculation function implementation
-  const calculateRouteForDirections = useCallback(() => {
-    if (!currentLocation) {
-      setError('Your current location is not available');
-      return;
-    }
-
-    // Determine target coordinates
-    let targetDestination;
-    if (destination && destination.latitude && destination.longitude) {
-      // Use customer coordinates directly
-      targetDestination = destination;
-    } else if (destination && destination.address) {
-      // We have an address but not coordinates - could use Geocoding API
-      // For now, we'll show an error
-      setError('Customer coordinates not available. Please try again.');
-      return;
-    } else if (!source) {
-      setError('No destination or restaurant location available');
-      return;
-    }
-
-    // We're good to calculate
-    setIsCalculating(true);
-    setError(null);
-
-    console.log("Calculating route with:");
-    console.log(" - Current location:", currentLocation);
-    console.log(" - Source:", source);
-    console.log(" - Destination:", targetDestination || destination);
-
-    // Force the DirectionsService to be rendered
-    const points = getRoutePoints();
-    if (points) {
-      console.log("Route points ready for calculation:", points);
-    } else {
-      setError('Could not determine route points');
-      setIsCalculating(false);
-    }
-  }, [currentLocation, source, destination]);
-
   // Handle direction results
   const directionsCallback = useCallback((
     result: google.maps.DirectionsResult | null,

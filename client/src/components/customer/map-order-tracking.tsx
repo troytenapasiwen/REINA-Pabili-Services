@@ -171,7 +171,7 @@ function MapWithKey({
           travelMode: window.google.maps.TravelMode.DRIVING,
           optimizeWaypoints: false
         },
-        (result, status) => {
+        (result: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
           if (status === window.google.maps.DirectionsStatus.OK && result) {
             setDirections(result);
           } else {

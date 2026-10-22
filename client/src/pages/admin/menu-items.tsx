@@ -186,7 +186,7 @@ export default function AdminMenuItems() {
       categories: menuItem.categories || [],
       restaurantId: menuItem.restaurantId,
       imageUrl: menuItem.imageUrl,
-      isAvailable: menuItem.isAvailable,
+      isAvailable: menuItem.isAvailable ?? true,
       dietaryInfo: menuItem.dietaryInfo || {},
     });
     setEditMenuItem(menuItem);

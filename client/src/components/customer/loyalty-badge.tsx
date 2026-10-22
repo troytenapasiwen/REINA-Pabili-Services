@@ -1,7 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import { Crown, Star, Award, TrendingUp, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,31 +25,26 @@ interface LoyaltyAccountData {
   };
 }
 
+/*
+  Reina Pabili brand tokens: yellow #FFD527, orange #F76043, charcoal #282828.
+  Each tier gets one accent fill (used on the top strip and icon box); text on it is always charcoal.
+*/
 const tierConfig = {
   bronze: {
     label: "Bronze",
-    color: "bg-amber-700",
-    textColor: "text-amber-700",
-    bgColor: "bg-amber-50",
-    borderColor: "border-amber-200",
+    accent: "bg-[#F76043]",
     icon: Award,
     description: "Welcome to our rewards program!",
   },
   silver: {
     label: "Silver",
-    color: "bg-gray-400",
-    textColor: "text-gray-600",
-    bgColor: "bg-gray-50",
-    borderColor: "border-gray-200",
+    accent: "bg-gray-300",
     icon: Star,
     description: "Free delivery coupon monthly + Priority support",
   },
   gold: {
     label: "Gold",
-    color: "bg-yellow-500",
-    textColor: "text-yellow-600",
-    bgColor: "bg-yellow-50",
-    borderColor: "border-yellow-200",
+    accent: "bg-[#FFD527]",
     icon: Crown,
     description: "Reduced free delivery threshold + 2% bonus points",
   },
@@ -64,11 +57,15 @@ export function LoyaltyBadge({ compact = false }: { compact?: boolean }) {
 
   if (isLoading) {
     return (
-      <Card className="animate-pulse">
-        <CardContent className={compact ? "p-4" : "p-6"}>
-          <div className="h-24 bg-gray-100 rounded" />
-        </CardContent>
-      </Card>
+      <div
+        className="border-2 border-[#282828]/30 bg-white motion-safe:animate-pulse"
+        aria-busy="true"
+        aria-label="Loading membership"
+      >
+        <div className={compact ? "p-4" : "p-5"}>
+          <div className="h-16 bg-gray-200" />
+        </div>
+      </div>
     );
   }
 
@@ -76,99 +73,96 @@ export function LoyaltyBadge({ compact = false }: { compact?: boolean }) {
     return null;
   }
 
-  const tier = tierConfig[loyaltyAccount.tier as keyof typeof tierConfig] || tierConfig.bronze;
+  const tier =
+    tierConfig[String(loyaltyAccount.tier).toLowerCase() as keyof typeof tierConfig] || tierConfig.bronze;
   const TierIcon = tier.icon;
   const progress = loyaltyAccount.progressToNextTier;
 
   if (compact) {
     return (
       <div
-        className={cn(
-          "flex items-center gap-2 px-3 py-2 rounded-lg border",
-          tier.bgColor,
-          tier.borderColor
-        )}
+        className="inline-flex items-center gap-2 border-2 border-[#282828] bg-white px-3 py-1.5 text-[#282828] shadow-[3px_3px_0_0_#282828]"
         data-testid="loyalty-badge-compact"
       >
-        <TierIcon className={cn("h-5 w-5", tier.textColor)} />
-        <span className={cn("font-medium", tier.textColor)}>
-          {tier.label}
+        <span className={cn("flex h-7 w-7 items-center justify-center border-2 border-[#282828]", tier.accent)}>
+          <TierIcon className="h-4 w-4" aria-hidden="true" />
         </span>
-        <Badge variant="secondary" className="ml-1">
+        <span className="font-extrabold">{tier.label}</span>
+        <span className="border-2 border-[#282828] bg-[#FFD527] px-2 py-0.5 text-xs font-extrabold">
           {loyaltyAccount.pointsBalance.toLocaleString()} pts
-        </Badge>
+        </span>
       </div>
     );
   }
 
   return (
-    <Card
-      className={cn("overflow-hidden border-2", tier.borderColor)}
+    <section
+      className="overflow-hidden border-2 border-[#282828] bg-white text-[#282828] shadow-[4px_4px_0_0_#282828]"
       data-testid="loyalty-badge-card"
+      aria-label="Membership"
     >
-      <div className={cn("h-2", tier.color)} />
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className={cn("p-2 rounded-full", tier.bgColor)}>
-              <TierIcon className={cn("h-6 w-6", tier.textColor)} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className={cn("font-bold text-lg", tier.textColor)}>
-                  {tier.label} Member
-                </span>
-              </div>
-              <p className="text-sm text-gray-500">{tier.description}</p>
+      <div className={cn("h-2 border-b-2 border-[#282828]", tier.accent)} />
+      <div className="space-y-4 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              className={cn(
+                "flex h-12 w-12 shrink-0 items-center justify-center border-2 border-[#282828] shadow-[3px_3px_0_0_#282828]",
+                tier.accent
+              )}
+            >
+              <TierIcon className="h-6 w-6" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-lg font-extrabold uppercase leading-tight tracking-tight">
+                {tier.label} Member
+              </p>
+              <p className="text-sm font-medium text-gray-700">{tier.description}</p>
             </div>
           </div>
-          <div className="text-right">
-            <div className="flex items-center gap-1">
-              <Gift className="h-4 w-4 text-primary" />
-              <span className="font-bold text-xl text-primary">
-                {loyaltyAccount.pointsBalance.toLocaleString()}
-              </span>
-            </div>
-            <span className="text-xs text-gray-500">points available</span>
+          <div className="shrink-0 border-2 border-[#282828] bg-[#FFD527] px-3 py-1.5 text-right">
+            <p className="flex items-center justify-end gap-1.5 text-xl font-extrabold leading-none">
+              <Gift className="h-4 w-4" aria-hidden="true" />
+              {loyaltyAccount.pointsBalance.toLocaleString()}
+            </p>
+            <p className="mt-1 text-xs font-bold">points available</p>
           </div>
         </div>
 
         {!progress.isMaxTier && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600 flex items-center gap-1">
-                <TrendingUp className="h-4 w-4" />
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 text-sm font-bold">
+              <span className="flex items-center gap-1.5">
+                <TrendingUp className="h-4 w-4" aria-hidden="true" />
                 Progress to {progress.nextTier}
               </span>
-              <span className="text-gray-500">
+              <span className="text-gray-700">
                 {progress.currentPoints.toLocaleString()} / {progress.pointsNeeded.toLocaleString()} pts
               </span>
             </div>
             <Progress
               value={progress.progressPercent}
-              className="h-2"
+              className="h-4 rounded-none border-2 border-[#282828] bg-white [&>div]:bg-[#F76043]"
               data-testid="loyalty-progress-bar"
             />
-            <p className="text-xs text-gray-500 text-center">
+            <p className="text-xs font-semibold text-gray-700">
               Earn {(progress.pointsNeeded - progress.currentPoints).toLocaleString()} more points to reach {progress.nextTier}!
             </p>
           </div>
         )}
 
         {progress.isMaxTier && (
-          <div className="bg-primary/10 rounded-lg p-3 text-center">
-            <p className="text-sm font-medium text-yellow-700">
+          <div className="border-2 border-[#282828] bg-[#FFD527] px-3 py-2 text-center">
+            <p className="text-sm font-bold">
               You've reached the highest tier! Enjoy all premium benefits.
             </p>
           </div>
         )}
 
-        <div className="mt-4 pt-3 border-t">
-          <p className="text-xs text-gray-500 text-center">
-            Earn 1 point for every ₱20 spent on orders
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+        <p className="border-t-2 border-[#282828]/15 pt-3 text-xs font-semibold text-gray-700">
+          Earn 1 point for every ₱20 spent on orders
+        </p>
+      </div>
+    </section>
   );
 }

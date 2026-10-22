@@ -120,7 +120,7 @@ export function RestaurantSetupWizard({ open, onComplete }: RestaurantSetupWizar
         closingTime: existingRestaurant.closingTime || "21:00",
         cuisine: existingRestaurant.categories?.join(", ") || "",
         deliveryFee: existingRestaurant.deliveryFee || 50,
-        serviceRadius: existingRestaurant.serviceRadius || 5,
+        serviceRadius: 5,
         categories: existingRestaurant.categories?.join(", ") || "",
         latitude: existingRestaurant.latitude || null,
         longitude: existingRestaurant.longitude || null,

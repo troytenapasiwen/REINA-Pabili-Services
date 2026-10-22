@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 // Add type definitions for window.google and the callback function
 declare global {
   interface Window {
-    google: typeof google;
+    google: any;
     initGoogleMapsCallback: () => void;
   }
 }

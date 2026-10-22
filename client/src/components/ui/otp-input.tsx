@@ -24,7 +24,6 @@ export function OTPInput({ length = 6, onComplete, disabled = false }: OTPInputP
         onChange={setOtp}
         disabled={disabled}
         pattern="^[0-9]+$"
-        separator={<div className="w-2" />}
       >
         {Array.from({ length }).map((_, i) => (
           <InputOTPGroup key={i}>

@@ -297,7 +297,7 @@ export function RiderNavigation({ source, destination, currentLocation }: RiderN
   const toggleMapView = () => {
     setMapExpanded(!mapExpanded);
     if (!directions && (source || destination)) {
-      getDirections();
+      calculateRoute();
     }
   };
 

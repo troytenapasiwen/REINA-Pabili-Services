@@ -98,7 +98,7 @@ export function RiderLocationMap({ riders, users, orders = [], restaurants = [] 
   const libraries = useMemo(() => ["places", "geometry"], []);
 
   // Fetch Google Maps API key
-  const { data: mapsData, isLoading: isLoadingMapsKey } = useQuery({
+  const { data: mapsData, isLoading: isLoadingMapsKey } = useQuery<{ key: string }>({
     queryKey: ['/api/maps/key'],
     staleTime: Infinity,
   });
@@ -234,41 +234,6 @@ export function RiderLocationMap({ riders, users, orders = [], restaurants = [] 
       }
     };
   }, []);
-
-  // Handle rider location update from WebSocket
-  const handleRiderLocationUpdate = (data: any) => {
-    const { riderId, location, timestamp, orderId } = data;
-
-    setRidersWithLocation(prevRiders => {
-      return prevRiders.map(rider => {
-        if (rider.id === riderId) {
-          let locationObject = undefined;
-
-          if (location) {
-            if (location.latitude && location.longitude) {
-              locationObject = {
-                lat: parseFloat(location.latitude),
-                lng: parseFloat(location.longitude),
-              };
-            } else if (location.lat && location.lng) {
-              locationObject = {
-                lat: parseFloat(location.lat),
-                lng: parseFloat(location.lng),
-              };
-            }
-          }
-
-          return {
-            ...rider,
-            currentLocationObject: locationObject,
-            lastUpdate: timestamp || new Date().toISOString(),
-            activeOrderId: orderId || rider.activeOrderId,
-          };
-        }
-        return rider;
-      });
-    });
-  };
 
   // Calculate route for a rider
   const calculateRoute = (rider: RiderWithLocation) => {

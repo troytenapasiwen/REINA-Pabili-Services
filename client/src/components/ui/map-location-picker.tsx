@@ -39,7 +39,7 @@ export function MapLocationPicker({
   const [mapLoaded, setMapLoaded] = useState(false);
 
   // Fetch Google Maps API key from backend
-  const { data: mapsData, isLoading: isLoadingKey } = useQuery({
+  const { data: mapsData, isLoading: isLoadingKey } = useQuery<{ key: string }>({
     queryKey: ['/api/maps/key'],
     staleTime: Infinity,
   });

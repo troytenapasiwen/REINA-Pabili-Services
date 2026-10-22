@@ -1,6 +1,6 @@
 import { useState } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -61,15 +61,9 @@ export default function AdminOrders() {
   });
 
   // Fetch next available rider based on queue position
-  const { data: nextAvailableRider, isLoading: isLoadingNextRider } = useQuery<Rider>({
+  const { data: nextAvailableRider, isLoading: isLoadingNextRider } = useQuery<Rider & { queuePosition?: number | null }>({
     queryKey: ["/api/riders/next-available"],
     enabled: !!selectedOrder && selectedOrder.status === "ready_for_pickup",
-    onSuccess: (data) => {
-      // Auto-select the suggested rider if none is selected yet
-      if (data && selectedRider === null) {
-        setSelectedRider(data.id);
-      }
-    }
   });
 
   // Filter orders
@@ -316,7 +310,7 @@ export default function AdminOrders() {
   };
 
   // Order table columns
-  const orderColumns = [
+  const orderColumns: Column<Order>[] = [
     {
       header: "Order ID",
       accessorKey: "id",
@@ -340,12 +334,14 @@ export default function AdminOrders() {
 
         // If restaurant found, return name, otherwise return ID
         if (restaurant) {
-          return restaurant.name;
+          return <span>{restaurant.name}</span>;
         } else {
           // Make sure client knows we're still trying to load restaurant name
-          return isLoadingRestaurants
-            ? "Loading..."
-            : `Restaurant #${row.restaurantId}`;
+          return (
+            <span>
+              {isLoadingRestaurants ? "Loading..." : `Restaurant #${row.restaurantId}`}
+            </span>
+          );
         }
       }
     },
@@ -391,8 +387,8 @@ export default function AdminOrders() {
       header: "Date",
       accessorKey: "createdAt",
       cell: (row: Order) => {
-        const date = row.createdAt ? new Date(row.createdAt) : new Date();
-        return date.toLocaleDateString();
+        const date = row.createdAt ? new Date(row.createdAt) : null;
+        return <span>{date ? date.toLocaleDateString() : "N/A"}</span>;
       }
     },
     {
@@ -402,7 +398,7 @@ export default function AdminOrders() {
     },
     {
       header: "Actions",
-      accessorKey: "actions",
+      accessorKey: (row: Order) => `Order #${row.id}`,
       cell: (row: Order) => (
         <div className="flex space-x-2">
           <Button
@@ -942,7 +938,7 @@ function OrderDetails({ orderId, onClose }: { orderId: number; onClose: () => vo
           <div className="space-y-3">
             <div className="flex justify-between border-b pb-2">
               <span className="font-medium text-sm">Customer:</span>
-              <span className="text-sm">{customer?.name || `Customer #${order.customerId}`}</span>
+              <span className="text-sm">{`Customer #${order.customerId}`}</span>
             </div>
 
             <div className="flex justify-between border-b pb-2">
@@ -985,12 +981,23 @@ function OrderDetails({ orderId, onClose }: { orderId: number; onClose: () => vo
           <div className="space-y-3">
             <h4 className="font-medium text-sm">Order Items:</h4>
             <div className="border rounded-md p-3 space-y-2 max-h-[200px] overflow-y-auto">
-              {order.items.map((item: any, index: number) => (
-                <div key={index} className="flex justify-between text-sm border-b pb-2 last:border-0 last:pb-0">
-                  <span>{item.quantity}× {item.name}</span>
-                  <span>₱ {item.totalPrice.toFixed(2)}</span>
-                </div>
-              ))}
+              {Array.isArray(order.items) ? order.items.map((rawItem: unknown, index: number) => {
+                const item =
+                  typeof rawItem === "object" && rawItem !== null
+                    ? rawItem as { quantity?: unknown; name?: unknown; totalPrice?: unknown }
+                    : {};
+
+                const quantity = typeof item.quantity === "number" ? item.quantity : 1;
+                const name = typeof item.name === "string" ? item.name : "Item";
+                const totalPrice = typeof item.totalPrice === "number" ? item.totalPrice : 0;
+
+                return (
+                  <div key={index} className="flex justify-between text-sm border-b pb-2 last:border-0 last:pb-0">
+                    <span>{quantity}× {name}</span>
+                    <span>₱ {totalPrice.toFixed(2)}</span>
+                  </div>
+                );
+              }) : <p className="text-sm text-muted-foreground">Order items unavailable.</p>}
             </div>
           </div>
         </div>
@@ -1007,13 +1014,27 @@ function OrderDetails({ orderId, onClose }: { orderId: number; onClose: () => vo
           <div className="h-[400px] rounded-md overflow-hidden border">
             <OrderTrackingMap
               order={order}
-              restaurantLocation={restaurantLocation}
-              customerLocation={customerLocation}
-              riderLocation={rider?.currentLocation ? {
-                lat: rider.currentLocation.latitude,
-                lng: rider.currentLocation.longitude,
-              } : undefined}
-              showDirections={true}
+              restaurant={restaurant}
+              rider={
+                rider
+                  ? {
+                      ...rider,
+                      currentLocation:
+                        typeof rider.currentLocation === "object" &&
+                        rider.currentLocation !== null &&
+                        "latitude" in rider.currentLocation &&
+                        "longitude" in rider.currentLocation &&
+                        typeof rider.currentLocation.latitude === "number" &&
+                        typeof rider.currentLocation.longitude === "number"
+                          ? {
+                              latitude: rider.currentLocation.latitude,
+                              longitude: rider.currentLocation.longitude,
+                            }
+                          : undefined,
+                    }
+                  : null
+              }
+              isLiveTracking={true}
             />
           </div>
         </div>

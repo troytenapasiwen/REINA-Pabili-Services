@@ -7,7 +7,7 @@ import { LanguageSwitcher } from "@/components/ui/language-switcher";
 import { Button } from "@/components/ui/button";
 import {
   Home, Search, ShoppingBag, User,
-  MapPin, Menu, X, FileText, ShoppingBasket
+  MapPin, FileText, ShoppingBasket
 } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -18,16 +18,23 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { CustomerLocationPicker } from "@/components/customer/customer-location-picker";
 import { EnhancedLocationPicker } from "@/components/customer/enhanced-location-picker";
 import { useQuery } from "@tanstack/react-query";
 import { Customer } from "@shared/schema";
 import { PrivacyPolicyModal } from "@/components/privacy-policy-modal";
 import { BrandLogo } from "@/components/brand-logo";
+
+/*
+  Reina Pabili brand tokens (same as the auth, home and restaurant pages):
+    yellow #FFD527, orange #F76043, charcoal #282828.
+  Square corners, 2px charcoal outlines, hard offset shadows. Text on orange is charcoal for contrast.
+*/
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#282828] focus-visible:ring-offset-2";
+const iconButtonClass = `flex h-11 w-11 items-center justify-center rounded-none border-2 border-[#282828] bg-white p-0 text-[#282828] shadow-[3px_3px_0_0_#282828] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:bg-[#FFD527] hover:shadow-[2px_2px_0_0_#282828] motion-reduce:transition-none ${focusRing}`;
+const plainButtonClass = `h-12 rounded-none border-2 border-[#282828] bg-white px-5 text-base font-bold text-[#282828] hover:bg-gray-100 ${focusRing}`;
 
 interface CustomerLayoutProps {
   children: ReactNode;
@@ -79,58 +86,96 @@ export default function CustomerLayout({
     }
   }, [customer]);
 
+  const cartCount = getTotalItems();
+
+  const navItems = [
+    { href: "/", label: t.dashboard, icon: Home, active: currentPath === "/" },
+    { href: "/orders", label: t.orders, icon: FileText, active: currentPath.startsWith("/orders") },
+    { href: "/pabili", label: t.pabiliService, icon: ShoppingBasket, active: currentPath === "/pabili" },
+    { href: "/cart", label: "Cart", icon: ShoppingBag, active: currentPath === "/cart", count: cartCount },
+    { href: "/profile", label: t.profile, icon: User, active: currentPath.startsWith("/profile") },
+  ];
+
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className={`${transparentHeader ? 'bg-transparent absolute top-0 left-0 right-0 z-10' : 'bg-white border-b'} p-4`}>
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-2">
-            <div
-              onClick={() => window.location.href = "/"}
-              className="text-lg font-bold text-primary flex items-center cursor-pointer"
+    <div className="flex min-h-screen w-full flex-col overflow-x-hidden bg-gray-50">
+      {/* Header.
+          Transparent mode keeps the original behaviour (overlaid on the page's banner), but the
+          controls sit on solid white boxes so they stay readable over any image. The bar itself ignores
+          pointer events so it never blocks the banner's own back button; only its controls are clickable. */}
+      <header
+        className={
+          transparentHeader
+            ? "pointer-events-none absolute left-0 right-0 top-0 z-10 p-4"
+            : "border-b-[3px] border-[#282828] bg-white px-4 py-3"
+        }
+      >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {/* Brand. In transparent mode it is nudged right so the banner's back button (top-left) stays clear. */}
+          <a
+            href="/"
+            aria-label="Reina Pabili Services home"
+            className={`pointer-events-auto order-1 flex items-center gap-2.5 text-[#282828] ${focusRing} ${
+              transparentHeader ? "ml-14 border-2 border-[#282828] bg-white py-1 pl-1 pr-3 shadow-[3px_3px_0_0_#282828]" : ""
+            }`}
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-[#282828] bg-[#FFD527] p-0.5 shadow-[2px_2px_0_0_#282828]">
+              <BrandLogo className="h-full w-full rounded-none" />
+            </span>
+            <span className="text-lg font-extrabold uppercase tracking-tight">Reina Pabili Services</span>
+          </a>
+
+          {/* Delivery location: second row on mobile, inline from sm up */}
+          {!transparentHeader && (
+            <button
+              type="button"
+              onClick={() => setAddressDialogOpen(true)}
+              aria-label={`Delivering to ${address || "your location"}. Change delivery location`}
+              className={`order-3 flex h-11 w-full min-w-0 items-center gap-2 border-2 border-[#282828] bg-[#FFD527] px-3 text-left text-sm font-bold text-[#282828] shadow-[3px_3px_0_0_#282828] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:bg-[#FFE066] hover:shadow-[2px_2px_0_0_#282828] motion-reduce:transition-none sm:order-2 sm:w-auto sm:max-w-xs ${focusRing}`}
             >
-              <BrandLogo className="h-8 w-8 mr-2" />
-              Reina Pabili
+              <MapPin size={16} className="shrink-0" aria-hidden="true" />
+              <span className="truncate">{address || "Set your location"}</span>
+            </button>
+          )}
+
+          <div className="pointer-events-auto order-2 ml-auto flex items-center gap-2.5 sm:order-3">
+            {/* Language Switcher */}
+            <div
+              className={`flex h-11 items-center [&_button]:rounded-none ${
+                transparentHeader ? "border-2 border-[#282828] bg-white px-1 shadow-[3px_3px_0_0_#282828]" : ""
+              }`}
+            >
+              <LanguageSwitcher />
             </div>
 
-            {!transparentHeader && (
-              <button
-                onClick={() => setAddressDialogOpen(true)}
-                className="text-xs flex items-center ml-2 text-gray-600"
-              >
-                <MapPin size={14} className="mr-1" />
-                <span className="truncate max-w-[150px]">{address}</span>
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Language Switcher */}
-            <LanguageSwitcher />
-
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               onClick={() => setSearchOpen(true)}
-              className={transparentHeader ? "text-white" : ""}
+              className={iconButtonClass}
+              aria-label="Search"
             >
-              <Search size={20} />
+              <Search size={20} aria-hidden="true" />
             </Button>
 
             {user ? (
-              <Avatar
-                className="h-8 w-8 cursor-pointer"
+              <button
+                type="button"
                 onClick={() => window.location.href = "/profile"}
+                aria-label="Open profile"
+                className={`h-11 w-11 shrink-0 border-2 border-[#282828] shadow-[3px_3px_0_0_#282828] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-[2px_2px_0_0_#282828] motion-reduce:transition-none ${focusRing}`}
               >
-                <AvatarFallback className="bg-primary text-white text-xs">
-                  {user.fullName?.substring(0, 2).toUpperCase() || 'U'}
-                </AvatarFallback>
-              </Avatar>
+                <Avatar className="h-full w-full rounded-none">
+                  <AvatarFallback className="rounded-none bg-[#F76043] text-sm font-extrabold text-[#282828]">
+                    {user.fullName?.substring(0, 2).toUpperCase() || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
             ) : (
               <Button
+                type="button"
                 variant="ghost"
-                size="sm"
-                className={transparentHeader ? "text-white hover:bg-white/20" : ""}
+                className={`h-11 rounded-none border-2 border-[#282828] bg-[#F76043] px-4 text-sm font-bold text-[#282828] shadow-[3px_3px_0_0_#282828] transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:bg-[#FF7154] hover:shadow-[2px_2px_0_0_#282828] motion-reduce:transition-none ${focusRing}`}
                 onClick={() => window.location.href = "/auth"}
               >
                 Login
@@ -141,11 +186,11 @@ export default function CustomerLayout({
       </header>
 
       {/* Main Content */}
-      <main className={`flex-1 px-3 sm:px-0 ${!hideNav ? 'pb-20' : 'pb-4'}`}>
+      <main className={`flex-1 px-3 sm:px-0 ${!hideNav ? 'pb-28' : 'pb-4'}`}>
         {title && (
           <div className="container py-4">
-            <h1 className="text-2xl font-bold">{title}</h1>
-            {description && <p className="text-muted-foreground mt-1">{description}</p>}
+            <h1 className="text-2xl font-extrabold uppercase tracking-tight text-[#282828]">{title}</h1>
+            {description && <p className="mt-1 font-semibold text-gray-700">{description}</p>}
           </div>
         )}
         {children}
@@ -153,9 +198,11 @@ export default function CustomerLayout({
 
       {/* Address Dialog */}
       <Dialog open={addressDialogOpen} onOpenChange={setAddressDialogOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-auto">
+        <DialogContent className="max-h-[90vh] overflow-auto rounded-none border-2 border-[#282828] sm:max-w-3xl sm:rounded-none">
           <DialogHeader>
-            <DialogTitle>Set Delivery Location</DialogTitle>
+            <DialogTitle className="text-xl font-extrabold uppercase tracking-tight text-[#282828]">
+              Set Delivery Location
+            </DialogTitle>
             <DialogDescription>
               Pin your location on the map to set your delivery address.
             </DialogDescription>
@@ -170,7 +217,7 @@ export default function CustomerLayout({
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddressDialogOpen(false)}>
+            <Button variant="outline" className={plainButtonClass} onClick={() => setAddressDialogOpen(false)}>
               Close
             </Button>
           </DialogFooter>
@@ -179,73 +226,69 @@ export default function CustomerLayout({
 
       {/* Search Dialog */}
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="rounded-none border-2 border-[#282828] sm:max-w-md sm:rounded-none">
           <DialogHeader>
-            <DialogTitle>Search</DialogTitle>
+            <DialogTitle className="text-xl font-extrabold uppercase tracking-tight text-[#282828]">
+              Search
+            </DialogTitle>
             <DialogDescription>
               Search for restaurants or dishes
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <Input placeholder="Search..." />
+            <Input
+              placeholder="Search..."
+              aria-label="Search restaurants or dishes"
+              className="h-12 rounded-none border-2 border-[#282828] bg-white px-4 text-base focus-visible:border-[#282828] focus-visible:ring-2 focus-visible:ring-[#282828] focus-visible:ring-offset-2"
+            />
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Bottom Navigation */}
       {!hideNav && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t py-2 px-6 z-10">
-          <div className="flex justify-between">
-            <div
-              onClick={() => window.location.href = "/"}
-              className={`flex flex-col items-center cursor-pointer ${currentPath === "/" ? "text-primary" : "text-gray-500"}`}
-            >
-              <Home size={20} />
-              <span className="text-xs mt-1">{t.dashboard}</span>
-            </div>
-            <div
-              onClick={() => window.location.href = "/orders"}
-              className={`flex flex-col items-center cursor-pointer ${currentPath.startsWith("/orders") ? "text-primary" : "text-gray-500"}`}
-            >
-              <FileText size={20} />
-              <span className="text-xs mt-1">{t.orders}</span>
-            </div>
-            <div
-              onClick={() => window.location.href = "/pabili"}
-              className={`flex flex-col items-center cursor-pointer ${currentPath === "/pabili" ? "text-primary" : "text-gray-500"}`}
-            >
-              <ShoppingBasket size={20} />
-              <span className="text-xs mt-1">{t.pabiliService}</span>
-            </div>
-            <div
-              onClick={() => window.location.href = "/cart"}
-              className={`flex flex-col items-center cursor-pointer ${currentPath === "/cart" ? "text-primary" : "text-gray-500"}`}
-            >
-              <div className="relative">
-                <ShoppingBag size={20} />
-                {getTotalItems() > 0 && (
-                  <Badge
-                    className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px]"
+        <nav
+          aria-label="Main navigation"
+          className="fixed bottom-0 left-0 right-0 z-30 border-t-[3px] border-[#282828] bg-white pb-[env(safe-area-inset-bottom)]"
+        >
+          <ul className="mx-auto flex max-w-2xl items-stretch justify-between px-2 pt-1.5 sm:px-6">
+            {navItems.map(({ href, label, icon: Icon, active, count }) => (
+              <li key={href} className="min-w-0 flex-1">
+                <a
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex flex-col items-center gap-0.5 px-1 py-0.5 text-[11px] text-[#282828] ${focusRing}`}
+                >
+                  <span
+                    className={`relative flex h-8 w-12 items-center justify-center border-2 ${
+                      active
+                        ? "border-[#282828] bg-[#FFD527] shadow-[2px_2px_0_0_#282828]"
+                        : "border-transparent"
+                    }`}
                   >
-                    {getTotalItems()}
-                  </Badge>
-                )}
-              </div>
-              <span className="text-xs mt-1">Cart</span>
-            </div>
-            <div
-              onClick={() => window.location.href = "/profile"}
-              className={`flex flex-col items-center cursor-pointer ${currentPath.startsWith("/profile") ? "text-primary" : "text-gray-500"}`}
-            >
-              <User size={20} />
-              <span className="text-xs mt-1">{t.profile}</span>
-            </div>
-          </div>
+                    <Icon size={20} aria-hidden="true" />
+                    {typeof count === "number" && count > 0 && (
+                      <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center border-2 border-[#282828] bg-[#F76043] px-0.5 text-[10px] font-extrabold leading-none">
+                        {count > 99 ? "99+" : count}
+                        <span className="sr-only"> items in cart</span>
+                      </span>
+                    )}
+                  </span>
+                  <span className={`max-w-full truncate ${active ? "font-extrabold" : "font-semibold text-gray-700"}`}>
+                    {label}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
           {/* Privacy Policy link */}
-          <div className="flex justify-center py-2 border-t">
+          <div className="flex justify-center border-t-2 border-[#282828]/15">
             <PrivacyPolicyModal
               trigger={
-                <button className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1">
+                <button
+                  type="button"
+                  className={`px-3 py-1 text-xs font-bold text-gray-700 underline decoration-[#F76043] decoration-2 underline-offset-4 hover:text-[#282828] ${focusRing}`}
+                >
                   Privacy Policy
                 </button>
               }

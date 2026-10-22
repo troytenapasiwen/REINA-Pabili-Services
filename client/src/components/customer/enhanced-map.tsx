@@ -201,7 +201,7 @@ const EnhancedMap: React.FC<EnhancedMapProps> = ({
 
       const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ location: { lat, lng } })
-        .then((response) => {
+        .then((response: google.maps.GeocoderResponse) => {
           if (response.results && response.results[0]) {
             const address = response.results[0].formatted_address;
             onLocationSelect({ address, lat, lng });
@@ -209,7 +209,7 @@ const EnhancedMap: React.FC<EnhancedMapProps> = ({
             onLocationSelect({ address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng });
           }
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           console.error("Geocoder failed:", error);
           onLocationSelect({ address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng });
         });
@@ -278,7 +278,7 @@ const EnhancedMap: React.FC<EnhancedMapProps> = ({
                 if (window.google && window.google.maps) {
                   const geocoder = new window.google.maps.Geocoder();
                   geocoder.geocode({ location: { lat, lng } })
-                    .then((response) => {
+                    .then((response: google.maps.GeocoderResponse) => {
                       if (response.results && response.results[0]) {
                         const address = response.results[0].formatted_address;
                         onLocationSelect({ address, lat, lng });
@@ -286,7 +286,7 @@ const EnhancedMap: React.FC<EnhancedMapProps> = ({
                         onLocationSelect({ address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng });
                       }
                     })
-                    .catch((error) => {
+                    .catch((error: unknown) => {
                       console.error("Geocoder failed:", error);
                       onLocationSelect({ address: `${lat.toFixed(6)}, ${lng.toFixed(6)}`, lat, lng });
                     });
@@ -299,7 +299,7 @@ const EnhancedMap: React.FC<EnhancedMapProps> = ({
           if (window.google && window.google.maps) {
             const geocoder = new window.google.maps.Geocoder();
             geocoder.geocode({ location: { lat: latitude, lng: longitude } })
-              .then((response) => {
+              .then((response: google.maps.GeocoderResponse) => {
                 if (response.results && response.results[0]) {
                   const address = response.results[0].formatted_address;
                   onLocationSelect({ address, lat: latitude, lng: longitude });
@@ -311,7 +311,7 @@ const EnhancedMap: React.FC<EnhancedMapProps> = ({
                   });
                 }
               })
-              .catch((error) => {
+              .catch((error: unknown) => {
                 console.error("Geocoder failed:", error);
                 onLocationSelect({
                   address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,

@@ -53,13 +53,13 @@ export function HealthCheck() {
   const { toast } = useToast();
 
   // Fetch health status
-  const { data: healthData, isLoading: healthLoading, refetch: refetchHealth } = useQuery({
+  const { data: healthData, isLoading: healthLoading, refetch: refetchHealth } = useQuery<SystemHealth>({
     queryKey: ["/api/admin/health"],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   // Fetch system metrics
-  const { data: metricsData, isLoading: metricsLoading, refetch: refetchMetrics } = useQuery({
+  const { data: metricsData, isLoading: metricsLoading, refetch: refetchMetrics } = useQuery<SystemMetrics>({
     queryKey: ["/api/admin/metrics"],
     refetchInterval: 60000, // Refresh every minute
   });

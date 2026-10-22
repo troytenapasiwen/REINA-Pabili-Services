@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Search, Filter } from "lucide-react";
 import { useMobile } from "@/hooks/use-mobile";
 
-interface Column<T> {
+export interface Column<T> {
   header: string;
   accessorKey: keyof T | ((row: T) => string | JSX.Element);
   cell?: (row: T) => JSX.Element;

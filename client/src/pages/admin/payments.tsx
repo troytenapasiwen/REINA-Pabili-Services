@@ -1,7 +1,7 @@
 import { useState } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { Order, PaymentMethod } from "@shared/schema";
@@ -79,10 +79,10 @@ export default function AdminPayments() {
   // Filter orders by date and payment status
   const filteredOrders = orders?.filter(order => {
     const matchesStatus = paymentStatus === "all" || order.paymentStatus === paymentStatus;
-    const orderDate = new Date(order.createdAt);
+    const orderDate = order.createdAt ? new Date(order.createdAt) : null;
 
     const matchesDateRange = !startDate || !endDate ||
-      (orderDate >= startDate && orderDate <= endDate);
+      (orderDate !== null && orderDate >= startDate && orderDate <= endDate);
 
     return matchesStatus && matchesDateRange;
   }) || [];
@@ -105,7 +105,7 @@ export default function AdminPayments() {
     .reduce((acc, order) => acc + order.totalAmount, 0);
 
   // Payment records table columns
-  const paymentColumns = [
+  const paymentColumns: Column<Order>[] = [
     {
       header: "Order ID",
       accessorKey: "id",
@@ -161,16 +161,18 @@ export default function AdminPayments() {
           failed: "text-red-600",
         };
 
+        const status = row.paymentStatus ?? "unknown";
+
         return (
-          <span className={statusClasses[row.paymentStatus] || ""}>
-            {row.paymentStatus.charAt(0).toUpperCase() + row.paymentStatus.slice(1)}
+          <span className={statusClasses[status] || ""}>
+            {status.charAt(0).toUpperCase() + status.slice(1)}
           </span>
         );
       },
     },
     {
       header: "Date",
-      accessorKey: (row: Order) => new Date(row.createdAt).toLocaleDateString(),
+      accessorKey: (row: Order) => row.createdAt ? new Date(row.createdAt).toLocaleDateString() : "N/A",
     },
     {
       header: "Reference",
@@ -224,11 +226,11 @@ export default function AdminPayments() {
     // Payment Records Table
     const tableData = filteredOrders.map(order => ([
       `#${order.id.toString().padStart(4, '0')}`,
-      new Date(order.createdAt).toLocaleDateString(),
+      order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A',
       `Customer #${order.customerId}`,
       `₱${order.totalAmount.toFixed(2)}`,
       order.paymentMethod === PaymentMethod.COD ? 'COD' : 'GCash',
-      order.paymentStatus.charAt(0).toUpperCase() + order.paymentStatus.slice(1),
+      (order.paymentStatus ?? 'unknown').replace(/^./, c => c.toUpperCase()),
       order.paymentReference || 'N/A'
     ]));
 
@@ -297,7 +299,7 @@ export default function AdminPayments() {
         order.paymentMethod,
         order.paymentStatus,
         order.paymentReference || "N/A",
-        new Date(order.createdAt).toLocaleString(),
+        order.createdAt ? new Date(order.createdAt).toLocaleString() : 'N/A',
       ].join(",")),
     ];
 

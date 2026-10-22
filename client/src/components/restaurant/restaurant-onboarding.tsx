@@ -272,10 +272,11 @@ export function RestaurantOnboarding({ userId, onComplete }: RestaurantOnboardin
                           <MapLocationPicker
                             onLocationSelect={handleLocationSelect}
                             initialLocation={
-                              form.getValues('latitude') && form.getValues('longitude')
+                              typeof form.getValues('latitude') === 'number' &&
+                              typeof form.getValues('longitude') === 'number'
                                 ? {
-                                    lat: form.getValues('latitude'),
-                                    lng: form.getValues('longitude'),
+                                    lat: form.getValues('latitude')!,
+                                    lng: form.getValues('longitude')!,
                                   }
                                 : undefined
                             }

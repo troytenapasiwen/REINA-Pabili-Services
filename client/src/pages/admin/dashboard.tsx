@@ -1,6 +1,6 @@
 import AdminLayout from "@/layouts/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatCard } from "@/components/ui/stat-card";
 import { useQuery } from "@tanstack/react-query";
 import { ShoppingBag, Store, Bike, DollarSign } from "lucide-react";
@@ -73,7 +73,7 @@ export default function AdminDashboard() {
   const totalRevenue = orders?.reduce((acc, order) => acc + (order.totalAmount || 0), 0) || 0;
 
   // Columns for the recent orders table
-  const orderColumns = [
+  const orderColumns: Column<Order>[] = [
     {
       header: "Order ID",
       accessorKey: "id",

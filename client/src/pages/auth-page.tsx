@@ -1,11 +1,28 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type KeyboardEvent, type FormEvent } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import { ShoppingBag, LogIn, User, Eye, EyeOff, Check, X, AlertCircle } from "lucide-react";
+import {
+  ShoppingBag,
+  LogIn,
+  User,
+  Eye,
+  EyeOff,
+  Check,
+  X,
+  AlertCircle,
+  Bike,
+  Store,
+  ClipboardList,
+  TrendingUp,
+  Clock,
+  ArrowRight,
+  ArrowLeft,
+  type LucideIcon,
+} from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -17,12 +34,6 @@ import { TermsConditions } from "@/components/auth/terms-conditions";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { BrandLogo } from "@/components/brand-logo";
-
-// Presentation only: food photo for the right-hand side (desktop). Replace with a bundled asset
-// (e.g. import heroUrl from "@assets/auth-food.jpg") if you prefer not to hotlink. If it fails to load,
-// the soft brand-tinted background behind it is shown and the form is unaffected.
-const HERO_IMAGE_URL =
-  "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1400&q=80";
 
 const loginSchema = z.object({
   username: z.string().min(1, "Username is required"),
@@ -53,19 +64,233 @@ const registerSchema = z.object({
   }),
 });
 
-// Shared presentation classes: square, filled fields and a modest primary button, as in the reference
-const inputClass = "h-11 rounded-sm border-gray-300 bg-gray-50";
-const labelClass = "text-sm font-medium text-gray-600";
-const primaryButtonClass = "h-11 w-full rounded-sm text-base font-semibold sm:w-auto sm:min-w-44 sm:px-10";
+/* ------------------------------------------------------------------ */
+/* Presentation helpers (visual only, no auth logic)                   */
+/* ------------------------------------------------------------------ */
+
+/*
+  Reina Pabili brand tokens, sampled from the logo and the promo post:
+    yellow   #FFD527   (logo background, promo background)
+    orange   #F76043   (logo roof, scooter, chevrons)
+    charcoal #282828   (promo headline text, road)
+  White text on this orange is only ~3.1:1, so text that sits ON the orange is charcoal (4.7:1).
+  Everything is square-cornered on purpose, with hard offset shadows and charcoal outlines.
+*/
+const inputClass =
+  "h-12 rounded-none border-2 border-[#282828] bg-white px-4 text-base placeholder:text-gray-500 focus-visible:border-[#282828] focus-visible:ring-2 focus-visible:ring-[#282828] focus-visible:ring-offset-2 aria-[invalid=true]:border-red-700";
+const labelClass = "text-sm font-bold text-[#282828]";
+const messageClass = "font-semibold text-red-700";
+const buttonBase =
+  "h-12 rounded-none border-2 border-[#282828] text-base font-bold text-[#282828] transition-all motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-[#282828] focus-visible:ring-offset-2 disabled:opacity-60";
+const hardShadow =
+  "shadow-[4px_4px_0_0_#282828] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0_0_#282828] active:translate-x-1 active:translate-y-1 active:shadow-none disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0";
+const primaryButtonClass = `${buttonBase} ${hardShadow} w-full bg-[#F76043] hover:bg-[#FF7154]`;
+const secondaryButtonClass = `${buttonBase} ${hardShadow} w-full bg-[#FFD527] hover:bg-[#FFE066]`;
+const plainButtonClass = `${buttonBase} bg-white px-5 hover:bg-gray-100`;
+const textLinkClass =
+  "h-auto rounded-none p-0 font-bold text-[#282828] underline decoration-[#F76043] decoration-2 underline-offset-4 hover:bg-transparent hover:text-[#282828] hover:decoration-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#282828] focus-visible:ring-offset-2";
 const panelClass = "border-0 bg-transparent shadow-none rounded-none";
-const panelHeaderClass = "px-0 pt-0 pb-8 space-y-2";
+const panelHeaderClass = "px-0 pt-0 pb-5 space-y-1.5";
 const panelContentClass = "px-0 pb-0";
-const titleClass = "text-3xl font-semibold tracking-tight";
-const switchLinkClass = "h-auto p-0 font-semibold text-primary";
+const titleClass = "text-3xl font-extrabold uppercase tracking-tight text-[#282828]";
+const descriptionClass = "text-base text-gray-700";
+const passwordToggleClass =
+  "absolute right-1 top-1 h-10 w-10 rounded-none p-0 text-[#282828] hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-[#282828]";
 // Tab panels are plain containers, not controls. Radix makes them focusable (tabIndex=0) and the shadcn
 // TabsContent adds a focus-visible ring in --ring (same coral as --primary), which draws an orange box
 // around the whole panel. The ring is removed on the panel only; inputs, buttons and tab triggers keep theirs.
 const tabPanelClass = "mt-0 outline-none ring-0 ring-offset-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0";
+
+// Password strength calculation (pure)
+const getPasswordRequirements = (password: string) => {
+  return {
+    hasLength: password.length >= 6,
+    hasLetter: /[a-zA-Z]/.test(password),
+    hasNumber: /\d/.test(password),
+    hasSpecial: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+  };
+};
+
+// Compact live password checklist + meter. Shown once the person focuses or types in the password
+// field, so the form stays short until the rules are relevant.
+function PasswordStrengthIndicator({ password }: { password: string }) {
+  const reqs = getPasswordRequirements(password);
+  const metCount = Object.values(reqs).filter(Boolean).length;
+  const isStrongPassword = metCount === 4;
+
+  const items: { met: boolean; label: string }[] = [
+    { met: reqs.hasLength, label: "6+ characters" },
+    { met: reqs.hasLetter, label: "Letters (a-z)" },
+    { met: reqs.hasNumber, label: "Numbers (0-9)" },
+    { met: reqs.hasSpecial, label: "Special (!@#$%^&*)" },
+  ];
+
+  const meterColor = isStrongPassword
+    ? "bg-green-600"
+    : metCount >= 3
+    ? "bg-yellow-500"
+    : metCount >= 2
+    ? "bg-[#F76043]"
+    : "bg-red-600";
+
+  const strengthLabel = isStrongPassword
+    ? "Strong password"
+    : metCount >= 3
+    ? "Good password"
+    : metCount >= 2
+    ? "Fair password"
+    : "Weak password";
+
+  return (
+    <div className="mt-2 space-y-2">
+      <span className="sr-only">Password requirements</span>
+      <div className="flex items-center gap-3">
+        <div className="grid flex-1 grid-cols-4 gap-1" aria-hidden="true">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className={`h-2 border border-[#282828] transition-colors duration-300 ${i < metCount && password ? meterColor : "bg-white"}`}
+            />
+          ))}
+        </div>
+        <span className="min-w-[7.5rem] text-right text-xs font-bold text-[#282828]" aria-live="polite">
+          {password ? strengthLabel : "Enter a password"}
+        </span>
+      </div>
+      <ul className="flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <li
+            key={item.label}
+            className={`flex items-center gap-1 border px-2 py-1 text-xs font-semibold ${
+              item.met
+                ? "border-green-800 bg-green-100 text-green-900"
+                : "border-gray-400 bg-white text-gray-700"
+            }`}
+          >
+            {item.met ? (
+              <Check className="h-3 w-3 shrink-0" aria-hidden="true" />
+            ) : (
+              <X className="h-3 w-3 shrink-0" aria-hidden="true" />
+            )}
+            <span>
+              {item.label}
+              <span className="sr-only">{item.met ? " (done)" : " (not yet)"}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Three chevrons, the motif from the Reina Pabili promo post
+function Chevrons({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 76 40" className={className} fill="none" stroke="currentColor" strokeWidth="8" aria-hidden="true">
+      <polyline points="6,4 22,20 6,36" />
+      <polyline points="32,4 48,20 32,36" />
+      <polyline points="58,4 74,20 58,36" />
+    </svg>
+  );
+}
+
+// Decorative "Pabili request" ticket shown on the branding panel. Purely illustrative, hidden from
+// assistive tech, and non-interactive.
+function OrderPreview() {
+  const items = [
+    { name: "Pandesal", qty: "× 10" },
+    { name: "Kape", qty: "× 3" },
+    { name: "Itlog", qty: "× 6" },
+  ];
+  const steps: { label: string; state: "done" | "active" }[] = [
+    { label: "Request sent", state: "done" },
+    { label: "Rider shopping", state: "done" },
+    { label: "On the way", state: "active" },
+  ];
+
+  return (
+    <div
+      className="pointer-events-none w-full max-w-sm -rotate-2 border-2 border-[#282828] bg-white p-5 text-[#282828] shadow-[6px_6px_0_0_#282828]"
+      aria-hidden="true"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center border-2 border-[#282828] bg-[#FFD527]">
+            <ShoppingBag className="h-4 w-4" />
+          </span>
+          <span className="text-sm font-extrabold uppercase tracking-tight">Pabili request</span>
+        </div>
+        <span className="border-2 border-[#282828] bg-[#FFD527] px-2.5 py-0.5 text-xs font-bold">
+          Arrives in 12 min
+        </span>
+      </div>
+
+      <ul className="mt-4 divide-y-2 divide-[#282828]/10 border-y-2 border-[#282828]/10 text-sm">
+        {items.map((item) => (
+          <li key={item.name} className="flex items-center justify-between py-2">
+            <span className="font-semibold">{item.name}</span>
+            <span className="font-bold text-gray-600">{item.qty}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-5 flex items-start">
+        {steps.map((step, i) => (
+          <div key={step.label} className="relative flex flex-1 flex-col items-center text-center">
+            {i > 0 && <span className="absolute -left-1/2 top-3 h-0.5 w-full bg-[#282828]" />}
+            <span
+              className={`relative z-10 flex h-6 w-6 items-center justify-center border-2 border-[#282828] ${
+                step.state === "done"
+                  ? "bg-[#282828] text-[#FFD527]"
+                  : "bg-[#F76043] text-[#282828] motion-safe:animate-pulse"
+              }`}
+            >
+              {step.state === "done" ? <Check className="h-3.5 w-3.5" /> : <Bike className="h-3.5 w-3.5" />}
+            </span>
+            <span className={`mt-2 text-xs ${step.state === "active" ? "font-extrabold" : "font-semibold text-gray-700"}`}>
+              {step.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// What each account type gets, shown on the branding panel while registering.
+const ROLE_BENEFITS: Record<string, { icon: LucideIcon; text: string }[]> = {
+  [UserRole.CUSTOMER]: [
+    { icon: ShoppingBag, text: "Order from restaurants near you" },
+    { icon: Bike, text: "Pabili: riders shop and deliver for you" },
+    { icon: Clock, text: "Track every order in real time" },
+  ],
+  [UserRole.RESTAURANT]: [
+    { icon: Store, text: "Put your menu in front of nearby customers" },
+    { icon: ClipboardList, text: "Manage incoming orders in one place" },
+    { icon: TrendingUp, text: "See your sales and customer feedback" },
+  ],
+};
+
+function RoleBenefits({ role }: { role: string }) {
+  const benefits = ROLE_BENEFITS[role] ?? ROLE_BENEFITS[UserRole.CUSTOMER];
+  return (
+    <ul className="grid gap-3.5" aria-live="polite">
+      {benefits.map(({ icon: Icon, text }) => (
+        <li key={`${role}-${text}`} className="flex items-center gap-3.5 text-base font-bold text-[#282828]">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-[#282828] bg-[#FFD527] shadow-[3px_3px_0_0_#282828]">
+            <Icon className="h-5 w-5" aria-hidden="true" />
+          </span>
+          {text}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const ACCOUNT_TYPES = [
+  { value: UserRole.CUSTOMER, label: "Customer", hint: "Order food and use Pabili" },
+  { value: UserRole.RESTAURANT, label: "Restaurant", hint: "Sell and manage orders" },
+] as const;
 
 export default function AuthPage() {
   const [location, setLocation] = useLocation();
@@ -85,6 +310,19 @@ export default function AuthPage() {
   const previousTab = useRef(activeTab);
   const tabsAnchorRef = useRef<HTMLDivElement>(null);
 
+  // Presentation only: caps-lock warning, progressive disclosure of the password checklist,
+  // and the two-step registration layout (which step is showing).
+  const [loginCapsLock, setLoginCapsLock] = useState(false);
+  const [registerCapsLock, setRegisterCapsLock] = useState(false);
+  const [showPasswordHints, setShowPasswordHints] = useState(false);
+  const [registerStep, setRegisterStep] = useState<1 | 2>(1);
+  const registerStepMounted = useRef(false);
+
+  // Auto-focus the first field only where there is a physical keyboard; on touch devices it would
+  // pop the keyboard open over the page before the person has seen it.
+  const canAutoFocus =
+    typeof window !== "undefined" && window.matchMedia("(pointer: fine)").matches;
+
   // After the newly selected form has rendered, bring its tab bar/heading into view, but only if
   // the user has scrolled past it. Runs on tab changes only (not on validation, dialogs or OTP).
   useEffect(() => {
@@ -96,76 +334,11 @@ export default function AuthPage() {
     anchor.scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" });
   }, [activeTab]);
 
-  // Password strength calculation
-  const getPasswordRequirements = (password: string) => {
-    return {
-      hasLength: password.length >= 6,
-      hasLetter: /[a-zA-Z]/.test(password),
-      hasNumber: /\d/.test(password),
-      hasSpecial: /[!@#$%^&*(),.?":{}|<>]/.test(password),
-    };
-  };
-
-  // Password strength indicator component
-  const PasswordStrengthIndicator = ({ password }: { password: string }) => {
-    const reqs = getPasswordRequirements(password);
-    const isStrongPassword = Object.values(reqs).every(Boolean);
-
-    return (
-      <div className="mt-3 space-y-3">
-        <div className="text-sm font-medium text-gray-700">Password Requirements:</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
-          <div className={`flex items-center text-xs ${reqs.hasLength ? 'text-green-600' : 'text-gray-500'}`}>
-            {reqs.hasLength ? <Check className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
-            At least 6 characters
-          </div>
-          <div className={`flex items-center text-xs ${reqs.hasLetter ? 'text-green-600' : 'text-gray-500'}`}>
-            {reqs.hasLetter ? <Check className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
-            Contains letters (a-z)
-          </div>
-          <div className={`flex items-center text-xs ${reqs.hasNumber ? 'text-green-600' : 'text-gray-500'}`}>
-            {reqs.hasNumber ? <Check className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
-            Contains numbers (0-9)
-          </div>
-          <div className={`flex items-center text-xs ${reqs.hasSpecial ? 'text-green-600' : 'text-gray-500'}`}>
-            {reqs.hasSpecial ? <Check className="w-3 h-3 mr-1" /> : <X className="w-3 h-3 mr-1" />}
-            Contains special characters (!@#$%^&*)
-          </div>
-        </div>
-        {password && (
-          <div>
-            <div className="text-xs text-gray-600 mb-1">Password Strength:</div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  isStrongPassword
-                    ? 'bg-green-500 w-full'
-                    : Object.values(reqs).filter(Boolean).length >= 3
-                    ? 'bg-yellow-500 w-3/4'
-                    : Object.values(reqs).filter(Boolean).length >= 2
-                    ? 'bg-orange-500 w-1/2'
-                    : 'bg-red-500 w-1/4'
-                }`}
-              />
-            </div>
-            <div className="text-xs mt-1 text-gray-600">
-              {isStrongPassword
-                ? 'Strong password'
-                : Object.values(reqs).filter(Boolean).length >= 3
-                ? 'Good password'
-                : Object.values(reqs).filter(Boolean).length >= 2
-                ? 'Fair password'
-                : 'Weak password'
-              }
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
+  // Validation messages are unchanged. "onTouched" only changes WHEN they first appear:
+  // after the person leaves a field (and then live as they fix it), instead of only on submit.
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
+    mode: "onTouched",
     defaultValues: {
       username: "",
       password: "",
@@ -174,6 +347,7 @@ export default function AuthPage() {
 
   const registerForm = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
+    mode: "onTouched",
     defaultValues: {
       username: "",
       password: "",
@@ -182,6 +356,43 @@ export default function AuthPage() {
       role: UserRole.CUSTOMER,
     },
   });
+
+  const selectedRole = registerForm.watch("role");
+
+  // Move focus to the first field of the step that just appeared (not on first render).
+  useEffect(() => {
+    if (!registerStepMounted.current) {
+      registerStepMounted.current = true;
+      return;
+    }
+    registerForm.setFocus(registerStep === 1 ? "fullName" : "username");
+  }, [registerStep]);
+
+  const handleCapsLock = (
+    e: KeyboardEvent<HTMLInputElement>,
+    setter: (value: boolean) => void,
+  ) => {
+    if (typeof e.getModifierState === "function") {
+      setter(e.getModifierState("CapsLock"));
+    }
+  };
+
+  // Registration is split into two short steps purely for layout. Step 1 is validated with the
+  // existing schema before moving on; the final submit still goes through onRegisterSubmit below.
+  async function goToRegisterStepTwo() {
+    const valid = await registerForm.trigger(["role", "fullName", "email"]);
+    if (valid) setRegisterStep(2);
+  }
+
+  function handleRegisterFormSubmit(e: FormEvent<HTMLFormElement>) {
+    if (registerStep === 1) {
+      // Enter on step 1 means "continue", not "submit"
+      e.preventDefault();
+      void goToRegisterStepTwo();
+      return;
+    }
+    return registerForm.handleSubmit(onRegisterSubmit)(e);
+  }
 
   // Handle login submission
   function onLoginSubmit(values: z.infer<typeof loginSchema>) {
@@ -333,11 +544,14 @@ export default function AuthPage() {
     );
   }
 
+  // Which story the branding panel tells: the order ticket for log in / OTP, role benefits for register.
+  const isRegisterView = !isOtpRequired && activeTab === "register";
+
   return (
-    <div className="min-h-screen w-full bg-white sm:bg-gray-100">
+    <div className="relative min-h-screen w-full overflow-x-hidden bg-[#FFD527]">
       {/* Maintenance Mode Modal */}
       <Dialog open={isMaintenanceMode && !showMaintenanceForAdmin} onOpenChange={() => {}}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="rounded-none border-2 border-[#282828] sm:rounded-none sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-yellow-600" />
@@ -348,7 +562,7 @@ export default function AuthPage() {
               Please check back later.
             </DialogDescription>
           </DialogHeader>
-          <Alert className="bg-yellow-50 border-yellow-200">
+          <Alert className="rounded-none bg-yellow-50 border-yellow-200">
             <AlertCircle className="h-4 w-4 text-yellow-600" />
             <AlertTitle>Maintenance in Progress</AlertTitle>
             <AlertDescription>
@@ -365,7 +579,7 @@ export default function AuthPage() {
       {/* Admin Maintenance Notice */}
       {showMaintenanceForAdmin && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-md">
-          <Alert className="bg-yellow-50 border-yellow-200">
+          <Alert className="rounded-none bg-yellow-50 border-yellow-200">
             <AlertCircle className="h-4 w-4 text-yellow-600" />
             <AlertTitle>Maintenance Mode Active</AlertTitle>
             <AlertDescription>
@@ -382,323 +596,507 @@ export default function AuthPage() {
         onDecline={handleTermsDecline}
       />
 
-      {/* Split card: white form on the left, food photo on the right (desktop). Height comes from the form. */}
-      <div className="sm:flex sm:min-h-screen sm:items-center sm:justify-center sm:px-6 sm:py-10">
-      <div className="grid w-full max-w-6xl bg-white sm:shadow-xl lg:min-h-[600px] lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-      <main className="flex min-w-0 flex-col px-6 py-8 sm:px-12 sm:py-12">
-        {/* Brand row */}
-        <div className="flex items-center gap-3">
-          <BrandLogo className="h-10 w-10" />
-          <span className="text-lg font-semibold">Reina Pabili Services</span>
-        </div>
+      {/* Page background: brand-colour geometry. Non-interactive and clipped to the page. */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute -left-16 -top-20 h-64 w-64 rotate-12 bg-white/40" />
+        <Chevrons className="absolute right-[5%] top-8 hidden w-28 text-[#F76043] sm:block" />
+        <div className="absolute -right-24 top-[42%] h-60 w-60 rotate-45 bg-[#F76043]/35" />
+        <div className="absolute bottom-10 left-[2%] hidden h-0 w-0 rotate-12 border-b-[110px] border-l-[64px] border-r-[64px] border-b-[#F76043] border-l-transparent border-r-transparent sm:block" />
+        <div className="absolute bottom-[12%] right-[4%] hidden h-16 w-16 -rotate-12 border-4 border-[#282828] sm:block" />
+        <div className="absolute left-[38%] top-4 hidden h-3 w-3 bg-[#282828] sm:block" />
+        <div className="absolute inset-x-0 bottom-4 h-2 opacity-80 [background:repeating-linear-gradient(90deg,#282828_0_36px,transparent_36px_72px)]" />
+      </div>
 
-        <div className="my-auto w-full max-w-md py-10">
-          {isOtpRequired ? (
-            <Card className={panelClass}>
-              <CardHeader className={panelHeaderClass}>
-                <CardTitle className={titleClass}>Verify OTP</CardTitle>
-                <CardDescription>
-                  Please enter the one-time password to verify your account
-                </CardDescription>
-              </CardHeader>
-              <CardContent className={panelContentClass}>
-                <OTPInput
-                  length={6}
-                  onComplete={onOtpComplete}
-                  disabled={verifyOtpMutation.isPending}
-                />
-              </CardContent>
-              <CardFooter className="flex flex-col items-start px-0 pb-0 pt-6">
-                <p className="text-sm text-muted-foreground mb-2">
-                  Didn't receive the code?
-                  <Button variant="link" className="p-0 h-auto ml-1">
-                    Resend
-                  </Button>
-                </p>
-                <Button
-                  variant="outline"
-                  className="mt-2"
-                  onClick={() => { setIsOtpRequired(false); setActiveTab("login"); }}
-                >
-                  Back to Login
-                </Button>
-              </CardFooter>
-            </Card>
-          ) : (
-            <div ref={tabsAnchorRef} className="scroll-mt-4">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="hidden">
-                <TabsTrigger value="login" data-testid="tab-login">Login</TabsTrigger>
-                <TabsTrigger value="register" data-testid="tab-register">Register</TabsTrigger>
-              </TabsList>
-
-              {/* Login Form */}
-              <TabsContent value="login" tabIndex={-1} className={tabPanelClass}>
-                <Card className={panelClass}>
-                  <CardHeader className={panelHeaderClass}>
-                    <CardTitle className={titleClass}>Welcome back</CardTitle>
-                    <CardDescription>
-                      Sign in with your username and password.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className={panelContentClass}>
-                    <Form {...loginForm}>
-                      <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
-                        <FormField
-                          control={loginForm.control}
-                          name="username"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className={labelClass}>Username</FormLabel>
-                              <FormControl>
-                                <Input className={inputClass} placeholder="Enter your username" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={loginForm.control}
-                          name="password"
-                          render={({ field }) => (
-                            <FormItem>
-                              <div className="flex justify-between items-center gap-2">
-                                <FormLabel className={labelClass}>Password</FormLabel>
-                                <Button
-                                  variant="link"
-                                  className="p-0 h-auto text-sm text-gray-500 hover:text-primary"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    window.location.href = '/forgot-password';
-                                  }}
-                                >
-                                  Forgot Password?
-                                </Button>
-                              </div>
-                              <FormControl>
-                                <div className="relative">
-                                  <Input
-                                    className={`${inputClass} pr-11`}
-                                    type={showLoginPassword ? "text" : "password"}
-                                    placeholder="Enter your password"
-                                    {...field}
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                    onClick={() => setShowLoginPassword(!showLoginPassword)}
-                                  >
-                                    {showLoginPassword ? (
-                                      <EyeOff className="h-4 w-4" />
-                                    ) : (
-                                      <Eye className="h-4 w-4" />
-                                    )}
-                                    <span className="sr-only">
-                                      {showLoginPassword ? "Hide password" : "Show password"}
-                                    </span>
-                                  </Button>
-                                </div>
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <Button
-                          type="submit"
-                          className={primaryButtonClass}
-                          disabled={loginMutation.isPending}
-                        >
-                          {loginMutation.isPending ? (
-                            <>
-                              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent"></div>
-                              Logging in...
-                            </>
-                          ) : (
-                            <>
-                              <LogIn className="mr-2 h-4 w-4" />
-                              Login
-                            </>
-                          )}
-                        </Button>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-                <p className="mt-8 text-sm text-gray-600">
-                  Don't have an account?{" "}
-                  <Button type="button" variant="link" className={switchLinkClass} onClick={() => setActiveTab("register")}>
-                    Sign up
-                  </Button>
-                </p>
-              </TabsContent>
-
-              {/* Register Form */}
-              <TabsContent value="register" id="register-tab" tabIndex={-1} className={tabPanelClass}>
-                <Card className={panelClass}>
-                  <CardHeader className={panelHeaderClass}>
-                    <CardTitle className={titleClass}>Create an Account</CardTitle>
-                    <CardDescription>
-                      Fill in your details to register with Reina Pabili Services
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className={panelContentClass}>
-                    <Form {...registerForm}>
-                      <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-4">
-                        <FormField
-                          control={registerForm.control}
-                          name="fullName"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className={labelClass}>Full Name</FormLabel>
-                              <FormControl>
-                                <Input className={inputClass} placeholder="Enter your full name" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={registerForm.control}
-                          name="email"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className={labelClass}>Email</FormLabel>
-                              <FormControl>
-                                <Input className={inputClass} type="email" placeholder="Enter your email" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={registerForm.control}
-                          name="username"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className={labelClass}>Username</FormLabel>
-                              <FormControl>
-                                <Input className={inputClass} placeholder="Choose a username" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={registerForm.control}
-                          name="password"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className={labelClass}>Password</FormLabel>
-                              <FormControl>
-                                <div className="relative">
-                                  <Input
-                                    className={`${inputClass} pr-11`}
-                                    type={showRegisterPassword ? "text" : "password"}
-                                    placeholder="Choose a password"
-                                    {...field}
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                    onClick={() => setShowRegisterPassword(!showRegisterPassword)}
-                                  >
-                                    {showRegisterPassword ? (
-                                      <EyeOff className="h-4 w-4" />
-                                    ) : (
-                                      <Eye className="h-4 w-4" />
-                                    )}
-                                    <span className="sr-only">
-                                      {showRegisterPassword ? "Hide password" : "Show password"}
-                                    </span>
-                                  </Button>
-                                </div>
-                              </FormControl>
-                              <PasswordStrengthIndicator password={field.value || ""} />
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={registerForm.control}
-                          name="role"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className={labelClass}>Account Type</FormLabel>
-                              <div className="grid grid-cols-2 gap-3">
-                                <Button
-                                  type="button"
-                                  variant={field.value === UserRole.CUSTOMER ? "default" : "outline"}
-                                  className="h-11 rounded-sm"
-                                  onClick={() => registerForm.setValue("role", UserRole.CUSTOMER)}
-                                >
-                                  Customer
-                                </Button>
-                                <Button
-                                  type="button"
-                                  variant={field.value === UserRole.RESTAURANT ? "default" : "outline"}
-                                  className="h-11 rounded-sm"
-                                  onClick={() => registerForm.setValue("role", UserRole.RESTAURANT)}
-                                >
-                                  Restaurant
-                                </Button>
-                              </div>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <Button
-                          type="submit"
-                          className={primaryButtonClass}
-                          disabled={registerMutation.isPending}
-                        >
-                          {registerMutation.isPending ? (
-                            <>
-                              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-r-transparent"></div>
-                              Registering...
-                            </>
-                          ) : (
-                            <>
-                              <User className="mr-2 h-4 w-4" />
-                              Register
-                            </>
-                          )}
-                        </Button>
-                        <p className="text-center text-xs text-muted-foreground">
-                          You'll be asked to review and accept the Terms and Conditions before your account is created.
-                        </p>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-                <p className="mt-8 text-sm text-gray-600">
-                  Already have an account?{" "}
-                  <Button type="button" variant="link" className={switchLinkClass} onClick={() => setActiveTab("login")}>
-                    Log in
-                  </Button>
-                </p>
-              </TabsContent>
-            </Tabs>
+      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl items-center px-4 py-8 sm:px-8 lg:py-6">
+        <div className="flex w-full flex-col lg:flex-row lg:items-stretch">
+          {/* Branding panel (left on desktop, compact header on mobile/tablet) */}
+          <aside className="relative flex flex-col overflow-hidden border-[3px] border-[#282828] bg-[#F76043] px-6 pb-14 pt-6 text-[#282828] shadow-[6px_6px_0_0_#282828] sm:px-10 sm:pt-8 lg:w-[54%] lg:flex-none lg:px-12 lg:pb-10 lg:pr-40 lg:pt-9 lg:shadow-[8px_8px_0_0_#282828]">
+            {/* Panel shapes: kept away from text and from the strip hidden under the form card */}
+            <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+              <div className="absolute -right-16 -top-16 h-56 w-56 rotate-12 bg-white/20" />
+              <div className="absolute -bottom-20 -left-16 h-60 w-60 rotate-45 bg-[#FFD527]/60" />
+              <Chevrons className="absolute bottom-6 right-44 hidden w-20 text-[#282828]/25 lg:block" />
             </div>
-          )}
-        </div>
-      </main>
 
-      {/* Food photo: desktop only, absolutely positioned so it never affects the form's height */}
-      <div className="relative hidden lg:block bg-primary/10" aria-hidden="true">
-        <img
-          src={HERO_IMAGE_URL}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="absolute inset-0 h-full w-full object-cover"
-          onError={(e) => { e.currentTarget.style.display = "none"; }}
-        />
-      </div>
-      </div>
+            {/* Brand row */}
+            <div className="relative z-10 flex items-center gap-3">
+              <div className="flex h-14 w-14 items-center justify-center border-2 border-[#282828] bg-white p-1 shadow-[3px_3px_0_0_#282828]">
+                <BrandLogo className="h-full w-full rounded-none" />
+              </div>
+              <span className="text-xl font-extrabold uppercase tracking-tight">Reina Pabili Services</span>
+            </div>
+
+            <div className="relative z-10 mt-6 lg:my-auto lg:py-6">
+              {isRegisterView ? (
+                <>
+                  <h1 className="max-w-md text-3xl font-extrabold uppercase leading-[1.05] tracking-tight text-white [text-shadow:3px_3px_0_#282828] sm:text-4xl lg:text-[2.75rem]">
+                    Let's get you set up.
+                  </h1>
+                  <p className="mt-3 hidden max-w-md text-lg font-semibold sm:block">
+                    Choose how you'll use Reina Pabili Services.
+                  </p>
+                  <div className="mt-7 hidden lg:block">
+                    <RoleBenefits role={selectedRole} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h1 className="max-w-md text-3xl font-extrabold uppercase leading-[1.05] tracking-tight text-white [text-shadow:3px_3px_0_#282828] sm:text-4xl lg:text-[2.75rem]">
+                    Pabili po! We'll bring it to you.
+                  </h1>
+                  <p className="mt-3 hidden max-w-md text-lg font-semibold sm:block">
+                    Order from local restaurants, or ask a rider to buy anything and deliver it to your door.
+                  </p>
+                  <div className="mt-8 hidden lg:block">
+                    <OrderPreview />
+                  </div>
+                </>
+              )}
+            </div>
+          </aside>
+
+          {/* Form card: overlaps the branding panel on desktop and the panel's bottom edge on mobile */}
+          <main className="relative z-10 -mt-6 mx-1 min-w-0 border-[3px] border-[#282828] bg-white px-5 py-7 shadow-[6px_6px_0_0_#282828] sm:mx-8 sm:px-10 lg:mx-0 lg:my-6 lg:-ml-28 lg:flex-1 lg:px-12 lg:py-8 lg:shadow-[8px_8px_0_0_#282828]">
+            <div className="mx-auto w-full max-w-md">
+              {isOtpRequired ? (
+                <Card className={panelClass}>
+                  <CardHeader className={panelHeaderClass}>
+                    <CardTitle className={titleClass}>Verify OTP</CardTitle>
+                    <CardDescription className={descriptionClass}>
+                      Please enter the one-time password to verify your account
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className={panelContentClass}>
+                    <div className="[&_input]:rounded-none [&_input]:border-2 [&_input]:border-[#282828]">
+                      <OTPInput
+                        length={6}
+                        onComplete={onOtpComplete}
+                        disabled={verifyOtpMutation.isPending}
+                      />
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex flex-col items-start px-0 pb-0 pt-6">
+                    <p className="text-sm text-gray-700 mb-2">
+                      Didn't receive the code?
+                      <Button variant="link" className={`${textLinkClass} ml-2`}>
+                        Resend
+                      </Button>
+                    </p>
+                    <Button
+                      variant="outline"
+                      className={`${plainButtonClass} mt-4`}
+                      onClick={() => { setIsOtpRequired(false); setActiveTab("login"); }}
+                    >
+                      Back to login
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ) : (
+                <div ref={tabsAnchorRef} className="scroll-mt-4">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                  <TabsList className="hidden">
+                    <TabsTrigger value="login" data-testid="tab-login">Login</TabsTrigger>
+                    <TabsTrigger value="register" data-testid="tab-register">Register</TabsTrigger>
+                  </TabsList>
+
+                  {/* Login Form */}
+                  <TabsContent value="login" tabIndex={-1} className={tabPanelClass}>
+                    <Card className={panelClass}>
+                      <CardHeader className={panelHeaderClass}>
+                        <CardTitle className={titleClass}>Welcome back</CardTitle>
+                        <CardDescription className={descriptionClass}>
+                          Log in with your username and password.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className={panelContentClass}>
+                        <Form {...loginForm}>
+                          <form
+                            onSubmit={loginForm.handleSubmit(onLoginSubmit)}
+                            className="space-y-4"
+                            aria-busy={loginMutation.isPending}
+                          >
+                            <FormField
+                              control={loginForm.control}
+                              name="username"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className={labelClass}>Username</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      className={inputClass}
+                                      placeholder="Enter your username"
+                                      autoComplete="username"
+                                      autoCapitalize="none"
+                                      spellCheck={false}
+                                      autoFocus={canAutoFocus}
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormMessage className={messageClass} />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={loginForm.control}
+                              name="password"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <FormLabel className={labelClass}>Password</FormLabel>
+                                    <a
+                                      href="/forgot-password"
+                                      className="text-sm font-bold text-[#282828] underline decoration-[#F76043] decoration-2 underline-offset-4 hover:decoration-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#282828] focus-visible:ring-offset-2"
+                                    >
+                                      Forgot password?
+                                    </a>
+                                  </div>
+                                  <FormControl>
+                                    <div className="relative">
+                                      <Input
+                                        className={`${inputClass} pr-12`}
+                                        type={showLoginPassword ? "text" : "password"}
+                                        placeholder="Enter your password"
+                                        autoComplete="current-password"
+                                        {...field}
+                                        onKeyDown={(e) => handleCapsLock(e, setLoginCapsLock)}
+                                        onKeyUp={(e) => handleCapsLock(e, setLoginCapsLock)}
+                                        onBlur={() => {
+                                          field.onBlur();
+                                          setLoginCapsLock(false);
+                                        }}
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className={passwordToggleClass}
+                                        aria-label={showLoginPassword ? "Hide password" : "Show password"}
+                                        aria-pressed={showLoginPassword}
+                                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                                      >
+                                        {showLoginPassword ? (
+                                          <EyeOff className="h-5 w-5" aria-hidden="true" />
+                                        ) : (
+                                          <Eye className="h-5 w-5" aria-hidden="true" />
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </FormControl>
+                                  {loginCapsLock && (
+                                    <p role="status" className="flex items-center gap-1.5 text-sm font-semibold text-amber-800">
+                                      <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                                      Caps Lock is on
+                                    </p>
+                                  )}
+                                  <FormMessage className={messageClass} />
+                                </FormItem>
+                              )}
+                            />
+                            <Button
+                              type="submit"
+                              className={primaryButtonClass}
+                              disabled={loginMutation.isPending}
+                            >
+                              {loginMutation.isPending ? (
+                                <>
+                                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-[#282828] border-r-transparent"></div>
+                                  Logging in...
+                                </>
+                              ) : (
+                                <>
+                                  <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />
+                                  Log in
+                                </>
+                              )}
+                            </Button>
+                          </form>
+                        </Form>
+                      </CardContent>
+                    </Card>
+                    <div className="mt-6 border-t-2 border-[#282828] pt-5 text-center">
+                      <p className="text-sm font-semibold text-gray-700">New to Reina Pabili Services?</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={`${secondaryButtonClass} mt-3`}
+                        onClick={() => setActiveTab("register")}
+                      >
+                        Create an account
+                      </Button>
+                    </div>
+                  </TabsContent>
+
+                  {/* Register Form (two short steps so it fits on one screen) */}
+                  <TabsContent value="register" id="register-tab" tabIndex={-1} className={tabPanelClass}>
+                    <Card className={panelClass}>
+                      <CardHeader className={panelHeaderClass}>
+                        <CardTitle className={titleClass}>Create your account</CardTitle>
+                        <CardDescription className={descriptionClass}>
+                          {registerStep === 1
+                            ? "Fill in your details to register with Reina Pabili Services"
+                            : "Almost done. Choose how you'll log in."}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className={panelContentClass}>
+                        {/* Progress */}
+                        <ol className="mb-5 flex items-center gap-3" aria-label="Registration progress">
+                          <li
+                            className="flex items-center gap-2"
+                            aria-current={registerStep === 1 ? "step" : undefined}
+                          >
+                            <span
+                              className={`flex h-7 w-7 items-center justify-center border-2 border-[#282828] text-sm font-extrabold ${
+                                registerStep === 1 ? "bg-[#F76043]" : "bg-[#FFD527]"
+                              }`}
+                            >
+                              {registerStep > 1 ? <Check className="h-4 w-4" aria-hidden="true" /> : "1"}
+                            </span>
+                            <span className="text-sm font-bold text-[#282828]">About you</span>
+                          </li>
+                          <li role="presentation" className="h-0.5 flex-1 bg-[#282828]" />
+                          <li
+                            className="flex items-center gap-2"
+                            aria-current={registerStep === 2 ? "step" : undefined}
+                          >
+                            <span
+                              className={`flex h-7 w-7 items-center justify-center border-2 text-sm font-extrabold ${
+                                registerStep === 2
+                                  ? "border-[#282828] bg-[#F76043] text-[#282828]"
+                                  : "border-gray-500 bg-white text-gray-700"
+                              }`}
+                            >
+                              2
+                            </span>
+                            <span className={`text-sm font-bold ${registerStep === 2 ? "text-[#282828]" : "text-gray-700"}`}>
+                              Your login
+                            </span>
+                          </li>
+                        </ol>
+
+                        <Form {...registerForm}>
+                          <form
+                            onSubmit={handleRegisterFormSubmit}
+                            className="space-y-4"
+                            aria-busy={registerMutation.isPending}
+                          >
+                            {/* Step 1: who you are. Kept mounted (just hidden) so values are never lost. */}
+                            <div
+                              className={registerStep === 1 ? "space-y-4" : "hidden"}
+                              role="group"
+                              aria-label="Step 1 of 2: About you"
+                            >
+                              <FormField
+                                control={registerForm.control}
+                                name="role"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <span id="account-type-label" className={labelClass}>I'm signing up as</span>
+                                    <div className="mt-1.5 grid grid-cols-2 gap-3" role="group" aria-labelledby="account-type-label">
+                                      {ACCOUNT_TYPES.map((type) => {
+                                        const selected = field.value === type.value;
+                                        return (
+                                          <button
+                                            key={type.value}
+                                            type="button"
+                                            aria-pressed={selected}
+                                            onClick={() => registerForm.setValue("role", type.value)}
+                                            className={`relative min-h-[4.25rem] border-2 border-[#282828] px-3.5 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#282828] focus-visible:ring-offset-2 ${
+                                              selected
+                                                ? "bg-[#FFD527] shadow-[3px_3px_0_0_#282828]"
+                                                : "bg-white hover:bg-gray-100"
+                                            }`}
+                                          >
+                                            <span className="block text-sm font-extrabold text-[#282828]">{type.label}</span>
+                                            <span className={`mt-0.5 block text-xs font-semibold ${selected ? "text-[#282828]" : "text-gray-700"}`}>
+                                              {type.hint}
+                                            </span>
+                                            {selected && (
+                                              <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center bg-[#282828] text-[#FFD527]">
+                                                <Check className="h-3 w-3" aria-hidden="true" />
+                                              </span>
+                                            )}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                    <FormMessage className={messageClass} />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={registerForm.control}
+                                name="fullName"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className={labelClass}>Full name</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        className={inputClass}
+                                        placeholder="Enter your full name"
+                                        autoComplete="name"
+                                        autoFocus={canAutoFocus}
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormMessage className={messageClass} />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={registerForm.control}
+                                name="email"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className={labelClass}>Email</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        className={inputClass}
+                                        type="email"
+                                        placeholder="Enter your email"
+                                        autoComplete="email"
+                                        autoCapitalize="none"
+                                        spellCheck={false}
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormMessage className={messageClass} />
+                                  </FormItem>
+                                )}
+                              />
+                              <Button type="submit" className={primaryButtonClass}>
+                                Continue
+                                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                              </Button>
+                            </div>
+
+                            {/* Step 2: how you log in */}
+                            <div
+                              className={registerStep === 2 ? "space-y-4" : "hidden"}
+                              role="group"
+                              aria-label="Step 2 of 2: Your login"
+                            >
+                              <FormField
+                                control={registerForm.control}
+                                name="username"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className={labelClass}>Username</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        className={inputClass}
+                                        placeholder="Choose a username"
+                                        autoComplete="username"
+                                        autoCapitalize="none"
+                                        spellCheck={false}
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormMessage className={messageClass} />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={registerForm.control}
+                                name="password"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className={labelClass}>Password</FormLabel>
+                                    <FormControl>
+                                      <div className="relative">
+                                        <Input
+                                          className={`${inputClass} pr-12`}
+                                          type={showRegisterPassword ? "text" : "password"}
+                                          placeholder="Choose a password"
+                                          autoComplete="new-password"
+                                          {...field}
+                                          onFocus={() => setShowPasswordHints(true)}
+                                          onKeyDown={(e) => handleCapsLock(e, setRegisterCapsLock)}
+                                          onKeyUp={(e) => handleCapsLock(e, setRegisterCapsLock)}
+                                          onBlur={() => {
+                                            field.onBlur();
+                                            setRegisterCapsLock(false);
+                                          }}
+                                        />
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className={passwordToggleClass}
+                                          aria-label={showRegisterPassword ? "Hide password" : "Show password"}
+                                          aria-pressed={showRegisterPassword}
+                                          onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                                        >
+                                          {showRegisterPassword ? (
+                                            <EyeOff className="h-5 w-5" aria-hidden="true" />
+                                          ) : (
+                                            <Eye className="h-5 w-5" aria-hidden="true" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </FormControl>
+                                    {registerCapsLock && (
+                                      <p role="status" className="flex items-center gap-1.5 text-sm font-semibold text-amber-800">
+                                        <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                                        Caps Lock is on
+                                      </p>
+                                    )}
+                                    {(showPasswordHints || !!field.value) && (
+                                      <PasswordStrengthIndicator password={field.value || ""} />
+                                    )}
+                                    <FormMessage className={messageClass} />
+                                  </FormItem>
+                                )}
+                              />
+                              <div className="flex gap-3">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className={plainButtonClass}
+                                  onClick={() => setRegisterStep(1)}
+                                  disabled={registerMutation.isPending}
+                                >
+                                  <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+                                  Back
+                                </Button>
+                                <Button
+                                  type="submit"
+                                  className={`${primaryButtonClass} flex-1`}
+                                  disabled={registerMutation.isPending}
+                                >
+                                  {registerMutation.isPending ? (
+                                    <>
+                                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-[#282828] border-r-transparent"></div>
+                                      Creating account...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <User className="mr-2 h-4 w-4" aria-hidden="true" />
+                                      Create account
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                              <p className="text-center text-xs font-semibold text-gray-700">
+                                You'll review the Terms and Conditions next, before your account is created.
+                              </p>
+                            </div>
+                          </form>
+                        </Form>
+                      </CardContent>
+                    </Card>
+                    <p className="mt-5 border-t-2 border-[#282828] pt-4 text-center text-sm font-semibold text-gray-700">
+                      Already have an account?{" "}
+                      <Button type="button" variant="link" className={textLinkClass} onClick={() => setActiveTab("login")}>
+                        Log in
+                      </Button>
+                    </p>
+                  </TabsContent>
+                </Tabs>
+                </div>
+              )}
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );

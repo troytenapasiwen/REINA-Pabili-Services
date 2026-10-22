@@ -82,7 +82,7 @@ export function MenuItemCard({
           {hasDiscount && isAvailable && (
             <div className="absolute top-2 left-2">
               <Badge variant="destructive" className="bg-green-600 hover:bg-green-700 text-white">
-                {Math.round((1 - discountedPrice / price) * 100)}% OFF
+                {Math.round((1 - displayDiscountedPrice / displayPrice) * 100)}% OFF
               </Badge>
             </div>
           )}

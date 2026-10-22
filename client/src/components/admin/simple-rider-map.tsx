@@ -39,7 +39,7 @@ export function SimpleRiderMap({ riders, users }: SimpleRiderMapProps) {
   const [processedRiders, setProcessedRiders] = useState<any[]>([]);
 
   // Fetch Google Maps API key
-  const { data: mapsData, isLoading: isLoadingMapsKey } = useQuery({
+  const { data: mapsData, isLoading: isLoadingMapsKey } = useQuery<{ key: string }>({
     queryKey: ['/api/maps/key'],
     staleTime: Infinity,
   });

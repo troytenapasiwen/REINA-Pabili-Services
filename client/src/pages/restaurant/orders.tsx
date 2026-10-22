@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from "react";
 import RestaurantLayout from "@/layouts/RestaurantLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Order, OrderStatus, Feedback } from "@shared/schema";
-import { Calendar, ArrowRight, Clock, CheckCheck, ClipboardList, CheckCircle, ChefHat, PackageCheck, Star } from "lucide-react";
+import { Order, OrderStatus, type OrderStatusType, Feedback } from "@shared/schema";
+import { Calendar as CalendarIcon, ArrowRight, Clock, CheckCheck, ClipboardList, CheckCircle, ChefHat, PackageCheck, Star } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -48,7 +49,7 @@ export default function RestaurantOrders() {
   const queryClient = useQueryClient();
 
   // Get restaurant data for the logged-in user
-  const { data: restaurant } = useQuery({
+  const { data: restaurant } = useQuery<{ id: number }>({
     queryKey: ["/api/restaurants/by-user"],
     enabled: !!user?.id,
   });
@@ -107,7 +108,7 @@ export default function RestaurantOrders() {
       const matchesStatus = statusFilter === "all" || order.status === statusFilter;
 
       const matchesDate = !orderDate ||
-        (new Date(order.createdAt).toDateString() === orderDate.toDateString());
+        (!!order.createdAt && new Date(order.createdAt).toDateString() === orderDate.toDateString());
 
       return matchesStatus && matchesDate;
     }) || [];
@@ -228,7 +229,7 @@ export default function RestaurantOrders() {
   };
 
   // Order table columns
-  const orderColumns = [
+  const orderColumns: Column<Order>[] = [
     {
       header: "Order #",
       accessorKey: "id",
@@ -248,7 +249,7 @@ export default function RestaurantOrders() {
             </div>
           );
         }
-        return `Customer #${row.customerId}`;
+        return <span>{`Customer #${row.customerId}`}</span>;
       },
     },
     {
@@ -257,9 +258,9 @@ export default function RestaurantOrders() {
       cell: (row: Order) => {
         // Check if items exists and is an array
         if (Array.isArray(row.items)) {
-          return row.items.length.toString();
+          return <span>{row.items.length.toString()}</span>;
         }
-        return "N/A";
+        return <span>N/A</span>;
       },
     },
     {
@@ -268,9 +269,9 @@ export default function RestaurantOrders() {
       cell: (row: Order) => {
         // Check if totalAmount exists and is a number
         if (typeof row.totalAmount === 'number') {
-          return `₱${row.totalAmount.toFixed(2)}`;
+          return <span>{`₱${row.totalAmount.toFixed(2)}`}</span>;
         }
-        return "₱0.00";
+        return <span>₱0.00</span>;
       },
     },
     {
@@ -281,6 +282,7 @@ export default function RestaurantOrders() {
     {
       header: "Time",
       accessorKey: (row: Order) => {
+        if (!row.createdAt) return "N/A";
         const date = new Date(row.createdAt);
         return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
       },
@@ -385,7 +387,7 @@ export default function RestaurantOrders() {
         }
       </span>
     ) },
-    { label: "Date", value: new Date(selectedOrder.createdAt).toLocaleString() },
+    { label: "Date", value: selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString() : "N/A" },
     { label: "Total Amount", value: typeof selectedOrder.totalAmount === 'number' ? `₱${selectedOrder.totalAmount.toFixed(2)}` : '₱0.00' },
     { label: "Status", value: <StatusBadge status={selectedOrder.status} /> },
     { label: "Payment Method", value: selectedOrder.paymentMethod },
@@ -422,7 +424,7 @@ export default function RestaurantOrders() {
               !orderDate && "text-muted-foreground"
             )}
           >
-            <Calendar className="mr-2 h-4 w-4" />
+            <CalendarIcon className="mr-2 h-4 w-4" />
             {orderDate ? format(orderDate, "PPP") : "Pick date"}
           </Button>
         </PopoverTrigger>
@@ -492,7 +494,7 @@ export default function RestaurantOrders() {
                       <div className="flex justify-between">
                         <span>Time:</span>
                         <span className="font-medium">
-                          {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}
                         </span>
                       </div>
                     </div>
@@ -723,7 +725,7 @@ export default function RestaurantOrders() {
                 <div>
                   <h3 className="text-lg font-semibold">Order #{selectedOrder.id.toString().padStart(4, '0')}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(selectedOrder.createdAt).toLocaleString()}
+                    {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleString() : "N/A"}
                   </p>
                 </div>
                 <StatusBadge status={selectedOrder.status} />
@@ -757,7 +759,7 @@ export default function RestaurantOrders() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Contact</p>
-                  <p className="text-sm">{selectedOrder.customerPhone || "N/A"}</p>
+                  <p className="text-sm">{(selectedOrder as Order & { customerPhone?: string | null }).customerPhone || "N/A"}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Payment Method</p>
@@ -765,7 +767,7 @@ export default function RestaurantOrders() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Payment Status</p>
-                  <Badge variant={selectedOrder.paymentStatus === "completed" ? "success" : "outline"}>
+                  <Badge variant="outline" className={selectedOrder.paymentStatus === "completed" ? "border-green-600 text-green-700" : ""}>
                     {selectedOrder.paymentStatus ?
                       (selectedOrder.paymentStatus.charAt(0).toUpperCase() + selectedOrder.paymentStatus.slice(1)) :
                       "Pending"}
@@ -793,7 +795,7 @@ export default function RestaurantOrders() {
                 </div>
               </div>
 
-              {[OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.PREPARING, OrderStatus.READY_FOR_PICKUP].includes(selectedOrder.status as OrderStatus) && (
+              {([OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.PREPARING, OrderStatus.READY_FOR_PICKUP] as string[]).includes(selectedOrder.status) && (
                 <div className="flex justify-end space-x-2">
                   <Button
                     variant="destructive"

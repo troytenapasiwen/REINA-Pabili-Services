@@ -1,7 +1,7 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 
-interface TimeInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+interface TimeInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "value"> {
   value?: string;
   onChange?: (value: string) => void;
   className?: string;
