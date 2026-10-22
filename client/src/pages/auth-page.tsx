@@ -101,6 +101,85 @@ const passwordToggleClass =
 // around the whole panel. The ring is removed on the panel only; inputs, buttons and tab triggers keep theirs.
 const tabPanelClass = "mt-0 outline-none ring-0 ring-offset-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0";
 
+/*
+  Background motion (visual only). Pure CSS, scoped with the "rp-auth-" prefix so nothing leaks to other pages.
+  Only the decorative shapes inside the pointer-events-none background layers use these classes; the
+  form card and the branding panel themselves are never animated.
+
+  How it works:
+  - Shapes drift using the individual CSS `translate` and `rotate` properties (GPU-friendly, no layout work).
+  - Each shape's original static rotation is passed in as --rp-base, so the resting pose is identical to the
+    current design and the animation only adds a small, gentle offset on top of it.
+  - Every shape has its own duration and a negative delay, so they never move in sync and nothing starts
+    from a "frozen" first frame.
+  - The dashed road strip is one extra tile wide on the left and slides exactly one tile (72px) per cycle,
+    so the loop is mathematically seamless: no jump, pause or visible reset.
+  - prefers-reduced-motion switches every animation off and leaves the shapes in their original pose.
+*/
+const authBackgroundMotionCss = `
+.rp-auth-float,
+.rp-auth-sway,
+.rp-auth-dash {
+  pointer-events: none;
+  will-change: translate, rotate;
+}
+.rp-auth-float,
+.rp-auth-sway {
+  transform: none !important;
+  rotate: var(--rp-base, 0deg);
+}
+.rp-auth-float {
+  animation: rp-auth-float var(--rp-dur, 18s) ease-in-out var(--rp-delay, 0s) infinite alternate;
+}
+.rp-auth-sway {
+  animation: rp-auth-sway var(--rp-dur, 22s) ease-in-out var(--rp-delay, 0s) infinite;
+}
+
+/* Per-shape tuning: travel (x, y), extra rotation (r), resting rotation (base), duration, delay */
+.rp-auth-a { --rp-x: 18px;  --rp-y: 22px;  --rp-r: 4deg;  --rp-base: 12deg;  --rp-dur: 19s; --rp-delay: -4s; }
+.rp-auth-b { --rp-x: 22px;  --rp-y: 8px;   --rp-r: 0deg;  --rp-base: 0deg;   --rp-dur: 14s; --rp-delay: -3s; }
+.rp-auth-c { --rp-x: -16px; --rp-y: 20px;  --rp-r: -5deg; --rp-base: 45deg;  --rp-dur: 23s; --rp-delay: -9s; }
+.rp-auth-d { --rp-x: 14px;  --rp-y: 16px;  --rp-r: 4deg;  --rp-base: 12deg;  --rp-dur: 21s; --rp-delay: -6s; }
+.rp-auth-e { --rp-x: -12px; --rp-y: -16px; --rp-r: 7deg;  --rp-base: -12deg; --rp-dur: 17s; --rp-delay: -11s; }
+.rp-auth-f { --rp-x: 8px;   --rp-y: 10px;  --rp-r: 0deg;  --rp-base: 0deg;   --rp-dur: 12s; --rp-delay: -2s; }
+.rp-auth-g { --rp-x: -10px; --rp-y: 12px;  --rp-r: 3deg;  --rp-base: 12deg;  --rp-dur: 20s; --rp-delay: -5s; }
+.rp-auth-h { --rp-x: 12px;  --rp-y: -10px; --rp-r: -3deg; --rp-base: 45deg;  --rp-dur: 24s; --rp-delay: -8s; }
+.rp-auth-i { --rp-x: 10px;  --rp-y: 6px;   --rp-r: 0deg;  --rp-base: 0deg;   --rp-dur: 16s; --rp-delay: -1s; }
+
+/* Endless flowing dashed path (same 36px dash / 36px gap pattern as before) */
+.rp-auth-dash {
+  left: -72px;
+  right: 0;
+  background-image: linear-gradient(90deg, #282828 0 36px, transparent 36px 72px);
+  background-size: 72px 100%;
+  background-repeat: repeat-x;
+  animation: rp-auth-dash-flow 6s linear infinite;
+}
+
+@keyframes rp-auth-float {
+  from { translate: 0 0; rotate: var(--rp-base, 0deg); }
+  to   { translate: var(--rp-x, 12px) var(--rp-y, 14px); rotate: calc(var(--rp-base, 0deg) + var(--rp-r, 3deg)); }
+}
+@keyframes rp-auth-sway {
+  0%, 100% { translate: 0 0; rotate: var(--rp-base, 0deg); }
+  33%      { translate: var(--rp-x, 12px) calc(var(--rp-y, 10px) * -1); rotate: calc(var(--rp-base, 0deg) + var(--rp-r, 3deg)); }
+  66%      { translate: calc(var(--rp-x, 12px) * -0.7) calc(var(--rp-y, 10px) * 0.6); rotate: calc(var(--rp-base, 0deg) - var(--rp-r, 3deg)); }
+}
+@keyframes rp-auth-dash-flow {
+  from { translate: 0 0; }
+  to   { translate: 72px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-auth-float,
+  .rp-auth-sway,
+  .rp-auth-dash {
+    animation: none !important;
+    will-change: auto;
+  }
+}
+`;
+
 // Password strength calculation (pure)
 const getPasswordRequirements = (password: string) => {
   return {
@@ -549,6 +628,9 @@ export default function AuthPage() {
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-[#FFD527]">
+      {/* Scoped background-motion styles (static string, no React state involved) */}
+      <style>{authBackgroundMotionCss}</style>
+
       {/* Maintenance Mode Modal */}
       <Dialog open={isMaintenanceMode && !showMaintenanceForAdmin} onOpenChange={() => {}}>
         <DialogContent className="rounded-none border-2 border-[#282828] sm:rounded-none sm:max-w-md">
@@ -596,26 +678,28 @@ export default function AuthPage() {
         onDecline={handleTermsDecline}
       />
 
-      {/* Page background: brand-colour geometry. Non-interactive and clipped to the page. */}
+      {/* Page background: brand-colour geometry. Non-interactive and clipped to the page.
+          Each shape drifts gently (see authBackgroundMotionCss); the dashed strip flows left to right. */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute -left-16 -top-20 h-64 w-64 rotate-12 bg-white/40" />
-        <Chevrons className="absolute right-[5%] top-8 hidden w-28 text-[#F76043] sm:block" />
-        <div className="absolute -right-24 top-[42%] h-60 w-60 rotate-45 bg-[#F76043]/35" />
-        <div className="absolute bottom-10 left-[2%] hidden h-0 w-0 rotate-12 border-b-[110px] border-l-[64px] border-r-[64px] border-b-[#F76043] border-l-transparent border-r-transparent sm:block" />
-        <div className="absolute bottom-[12%] right-[4%] hidden h-16 w-16 -rotate-12 border-4 border-[#282828] sm:block" />
-        <div className="absolute left-[38%] top-4 hidden h-3 w-3 bg-[#282828] sm:block" />
-        <div className="absolute inset-x-0 bottom-4 h-2 opacity-80 [background:repeating-linear-gradient(90deg,#282828_0_36px,transparent_36px_72px)]" />
+        <div className="rp-auth-float rp-auth-a absolute -left-16 -top-20 h-64 w-64 rotate-12 bg-white/40" />
+        <Chevrons className="rp-auth-sway rp-auth-b absolute right-[5%] top-8 hidden w-28 text-[#F76043] sm:block" />
+        <div className="rp-auth-float rp-auth-c absolute -right-24 top-[42%] h-60 w-60 rotate-45 bg-[#F76043]/35" />
+        <div className="rp-auth-sway rp-auth-d absolute bottom-10 left-[2%] hidden h-0 w-0 rotate-12 border-b-[110px] border-l-[64px] border-r-[64px] border-b-[#F76043] border-l-transparent border-r-transparent sm:block" />
+        <div className="rp-auth-float rp-auth-e absolute bottom-[12%] right-[4%] hidden h-16 w-16 -rotate-12 border-4 border-[#282828] sm:block" />
+        <div className="rp-auth-sway rp-auth-f absolute left-[38%] top-4 hidden h-3 w-3 bg-[#282828] sm:block" />
+        <div className="rp-auth-dash absolute bottom-4 h-2 opacity-80" />
       </div>
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-6xl items-center px-4 py-8 sm:px-8 lg:py-6">
         <div className="flex w-full flex-col lg:flex-row lg:items-stretch">
           {/* Branding panel (left on desktop, compact header on mobile/tablet) */}
           <aside className="relative flex flex-col overflow-hidden border-[3px] border-[#282828] bg-[#F76043] px-6 pb-14 pt-6 text-[#282828] shadow-[6px_6px_0_0_#282828] sm:px-10 sm:pt-8 lg:w-[54%] lg:flex-none lg:px-12 lg:pb-10 lg:pr-40 lg:pt-9 lg:shadow-[8px_8px_0_0_#282828]">
-            {/* Panel shapes: kept away from text and from the strip hidden under the form card */}
+            {/* Panel shapes: kept away from text and from the strip hidden under the form card.
+                The panel itself stays still; only these decorative shapes drift, very slightly. */}
             <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-              <div className="absolute -right-16 -top-16 h-56 w-56 rotate-12 bg-white/20" />
-              <div className="absolute -bottom-20 -left-16 h-60 w-60 rotate-45 bg-[#FFD527]/60" />
-              <Chevrons className="absolute bottom-6 right-44 hidden w-20 text-[#282828]/25 lg:block" />
+              <div className="rp-auth-float rp-auth-g absolute -right-16 -top-16 h-56 w-56 rotate-12 bg-white/20" />
+              <div className="rp-auth-float rp-auth-h absolute -bottom-20 -left-16 h-60 w-60 rotate-45 bg-[#FFD527]/60" />
+              <Chevrons className="rp-auth-sway rp-auth-i absolute bottom-6 right-44 hidden w-20 text-[#282828]/25 lg:block" />
             </div>
 
             {/* Brand row */}
